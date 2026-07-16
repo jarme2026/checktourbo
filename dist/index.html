@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Check List Tour — Friday</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --paper: #F6F1E4;
+    --paper-line: #E4DBC4;
+    --ink: #2E2A22;
+    --ink-soft: #6B6353;
+    --stamp-green: #2F6B4F;
+    --stamp-green-bg: #E3EEE6;
+    --stamp-red: #A94438;
+    --board: #C9BFA5;
+    --board-dark: #8B8168;
+    --card: #FFFEFA;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height:100vh;
+    padding: 40px 16px 80px;
+  }
+  .wrap{ max-width: 960px; margin: 0 auto; }
+  .clip{ width: 140px; height: 46px; margin: 0 auto -24px; position: relative; z-index: 2; }
+  .board{
+    background: var(--card);
+    border: 1px solid var(--board-dark);
+    border-radius: 6px;
+    box-shadow: 0 2px 0 var(--board-dark), 0 10px 24px rgba(60,50,30,0.12);
+    padding: 40px 36px 36px;
+    position: relative;
+  }
+  h1{
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 26px;
+    letter-spacing: 0.5px;
+    margin: 0 0 4px;
+    text-transform: uppercase;
+  }
+  .subtitle{ color: var(--ink-soft); font-size: 14px; margin: 0 0 28px; }
+  .drop{
+    border: 2px dashed var(--board-dark);
+    border-radius: 8px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    background: repeating-linear-gradient(0deg, transparent, transparent 27px, var(--paper-line) 28px);
+  }
+  .drop:hover, .drop.dragover{ border-color: var(--stamp-green); background: var(--stamp-green-bg); }
+  .drop svg{ opacity:0.55; margin-bottom: 8px; }
+  .drop p{ margin: 4px 0; font-size: 14px; color: var(--ink-soft); }
+  .drop strong{ color: var(--ink); font-family: 'Courier New', monospace; }
+  input[type=file]{ display:none; }
+  .controls{ display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 22px; }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .field label{
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--ink-soft); font-family: 'Courier New', monospace;
+  }
+  select, .btn, .search-input{
+    font-family: inherit; font-size: 14px; padding: 9px 12px;
+    border-radius: 5px; border: 1px solid var(--board-dark);
+    background: var(--card); color: var(--ink);
+  }
+  select{ min-width: 200px; cursor:pointer; }
+  .btn{ cursor: pointer; background: var(--card); transition: background 0.15s ease; }
+  .btn:hover{ background: var(--paper-line); }
+  .btn.danger{ color: var(--stamp-red); border-color: var(--stamp-red); }
+  .btn.danger:hover{ background: #FBEAE7; }
+  .fileinfo{ font-size: 13px; color: var(--ink-soft); margin-bottom: 18px; }
+  .fileinfo strong{ color: var(--ink); }
+  .search-wrap{ position: relative; margin-bottom: 16px; }
+  .search-input{ width: 100%; padding: 10px 14px 10px 36px; font-size: 15px; }
+  .search-wrap svg{
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    opacity: 0.5; pointer-events: none;
+  }
+  .search-count{ font-size: 12px; color: var(--ink-soft); margin: -8px 0 16px 2px; font-family: 'Courier New', monospace; }
+  .table-scroll{ overflow-x: auto; border: 1px solid var(--paper-line); border-radius: 6px; }
+  table{ border-collapse: collapse; width: 100%; font-size: 14px; }
+  thead th{
+    background: var(--board); color: var(--ink); text-align: left;
+    padding: 10px 14px; font-family: 'Courier New', monospace; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap;
+    position: sticky; top: 0;
+  }
+  thead th.tick-col{ text-align:center; }
+  tbody td{ padding: 9px 14px; border-top: 1px solid var(--paper-line); white-space: nowrap; }
+  tbody tr:nth-child(even){ background: #FBF8F0; }
+  tbody tr.done td{ color: var(--ink-soft); }
+  tbody tr.hidden-row{ display: none; }
+  mark{ background: #FCE79B; color: inherit; padding: 0 1px; border-radius: 2px; }
+  td.tick-cell{ text-align:center; width: 110px; }
+  .stamp-box{
+    display:inline-flex; align-items:center; justify-content:center;
+    width: 30px; height: 30px; cursor: pointer; position: relative;
+  }
+  .stamp-box input{ display:none; }
+  .stamp-mark{
+    width: 26px; height: 26px; border: 2px solid var(--stamp-red); border-radius: 4px;
+    display:flex; align-items:center; justify-content:center; transition: transform 0.12s ease;
+  }
+  .stamp-box input:checked + .stamp-mark{ border-color: var(--stamp-green); transform: rotate(-6deg) scale(1.08); }
+  .stamp-mark svg{ width: 16px; height:16px; opacity: 0; transform: scale(0.5); transition: opacity 0.12s ease, transform 0.12s ease; }
+  .stamp-box input:checked + .stamp-mark svg{ opacity: 1; transform: scale(1); }
+  .stamp-date{ display:block; font-size: 10px; color: var(--ink-soft); margin-top: 2px; font-family: 'Courier New', monospace; }
+  .qty-input-wrap{ display:flex; align-items:center; justify-content:center; gap: 4px; }
+  .qty-input{
+    width: 52px; padding: 6px 4px; text-align:center; font-size: 14px;
+    border: 2px solid var(--board-dark); border-radius: 5px; font-family: 'Courier New', monospace;
+  }
+  .qty-input.full{ border-color: var(--stamp-green); background: var(--stamp-green-bg); }
+  .qty-total{ font-size: 12px; color: var(--ink-soft); font-family: 'Courier New', monospace; }
+  .empty{ text-align:center; padding: 40px 10px; color: var(--ink-soft); font-size: 14px; }
+  .footer-note{ margin-top: 18px; font-size: 12px; color: var(--ink-soft); text-align:center; }
+  .footer-note code{ background: var(--paper-line); padding: 1px 5px; border-radius: 3px; }
+  .progress-line{ font-family: 'Courier New', monospace; font-size: 13px; color: var(--ink-soft); margin-bottom: 14px; }
+  .progress-line strong{ color: var(--stamp-green); }
+
+  @media (max-width: 700px){
+    body{ padding: 20px 8px 60px; }
+    .clip{ display: none; }
+    .board{ padding: 22px 14px 26px; border-radius: 10px; }
+    h1{ font-size: 19px; }
+    .subtitle{ font-size: 13px; margin-bottom: 20px; }
+    .drop{ padding: 26px 12px; }
+    .controls{ flex-direction: column; align-items: stretch; gap: 12px; }
+    .field{ width: 100%; }
+    select{ min-width: 0; width: 100%; font-size: 16px; }
+    .btn{ width: 100%; text-align: center; padding: 12px; }
+    .fileinfo{ font-size: 12px; }
+    .search-input{ font-size: 16px; }
+    .table-scroll{ border: none; overflow: visible; }
+    table, thead, tbody, tr, td{ display: block; width: 100%; }
+    thead{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    tbody tr{
+      position: relative; background: var(--card); border: 1px solid var(--paper-line);
+      border-radius: 10px; margin-bottom: 12px; padding: 14px 100px 14px 16px;
+    }
+    tbody tr.hidden-row{ display: none; }
+    tbody tr.done{ background: var(--stamp-green-bg); }
+    tbody td{
+      border-top: none; padding: 5px 0; white-space: normal; display: flex;
+      justify-content: space-between; align-items: flex-start; gap: 14px;
+      font-size: 15px; word-break: break-word;
+    }
+    tbody td:not(.tick-cell)::before{
+      content: attr(data-label); color: var(--ink-soft); font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.4px; font-family: 'Courier New', monospace;
+      flex-shrink: 0; padding-top: 2px;
+    }
+    td.tick-cell{ position: absolute; top: 12px; right: 12px; width: auto; padding: 0; }
+    .stamp-box{ width: 46px; height: 46px; }
+    .stamp-mark{ width: 40px; height: 40px; border-width: 2.5px; }
+    .stamp-mark svg{ width: 22px; height: 22px; }
+    .stamp-date{ position: absolute; top: 50px; right: 0; white-space: nowrap; }
+    .qty-input-wrap{ flex-direction: column; }
+    .qty-input{ width: 56px; padding: 8px 4px; font-size: 16px; }
+    .progress-line{ font-size: 12px; margin-bottom: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <svg class="clip" viewBox="0 0 140 46" xmlns="http://www.w3.org/2000/svg">
+    <rect x="45" y="0" width="50" height="30" rx="8" fill="#8B8168"/>
+    <rect x="55" y="14" width="30" height="20" rx="6" fill="#C9BFA5" stroke="#8B8168" stroke-width="2"/>
+  </svg>
+  <div class="board">
+    <h1>Check List Tour — Friday</h1>
+    <p class="subtitle" id="subtitle">Import the sheet, pick the column to check off, and search anything inside it.</p>
+
+    <div id="uploadArea" style="display:none;">
+      <div class="drop" id="dropZone">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p><strong>Click to choose</strong> or drop a file here</p>
+        <p>.xlsx, .xls, .csv or .txt</p>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.txt">
+    </div>
+
+    <div id="emptyState" class="empty" style="display:none;">
+      No sheet has been loaded yet.
+    </div>
+
+    <div id="afterUpload" style="display:none;">
+      <div class="fileinfo admin-only" id="fileInfoBar">Sheet: <strong id="fileName"></strong> · <span id="rowCount"></span> rows · <a href="#" id="changeFile" style="color:var(--stamp-green);">replace file</a></div>
+
+      <div class="controls admin-only" id="adminControls">
+        <div class="field">
+          <label for="colSelect">Column to check</label>
+          <select id="colSelect"></select>
+        </div>
+        <div class="field">
+          <label for="qtyColSelect">Quantity column (optional)</label>
+          <select id="qtyColSelect"></select>
+        </div>
+        <button class="btn danger" id="resetBtn">Clear all progress</button>
+      </div>
+
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7"/>
+          <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
+        </svg>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search anything in the sheet…">
+      </div>
+      <div class="search-count" id="searchCount"></div>
+
+      <div class="progress-line" id="progressLine"></div>
+
+      <div class="table-scroll">
+        <table id="dataTable"></table>
+      </div>
+    </div>
+
+    <p class="footer-note admin-only" id="footerAdminNote">This sheet stays saved even if you re-import it another day. The link with <code>?admin=1</code> gives upload access — only share that version with yourself, and share the plain link with everyone else.</p>
+    <p class="footer-note" id="footerViewerNote" style="display:none;">Your progress is saved automatically.</p>
+  </div>
+</div>
+
+<script>
+let headers = [];
+let rows = [];
+let tickColIndex = -1;
+let qtyColIndex = -1;
+let rowKeys = [];
+let allTicks = {};
+let rowRefs = [];
+let pollTimer = null;
+
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const uploadArea = document.getElementById('uploadArea');
+const afterUpload = document.getElementById('afterUpload');
+const emptyState = document.getElementById('emptyState');
+const fileNameEl = document.getElementById('fileName');
+const rowCountEl = document.getElementById('rowCount');
+const colSelect = document.getElementById('colSelect');
+const qtyColSelect = document.getElementById('qtyColSelect');
+const resetBtn = document.getElementById('resetBtn');
+const changeFile = document.getElementById('changeFile');
+const progressLine = document.getElementById('progressLine');
+const subtitleEl = document.getElementById('subtitle');
+const footerViewerNote = document.getElementById('footerViewerNote');
+const searchInput = document.getElementById('searchInput');
+const searchCount = document.getElementById('searchCount');
+
+const urlParams = new URLSearchParams(location.search);
+const isAdmin = urlParams.get('admin') === '1';
+
+if (!isAdmin){
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+  footerViewerNote.style.display = 'block';
+  subtitleEl.textContent = 'Check off or update quantities below, and search anything in the list.';
+}
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+changeFile.addEventListener('click', e => {
+  e.preventDefault();
+  afterUpload.style.display = 'none';
+  uploadArea.style.display = 'block';
+  fileInput.value = '';
+});
+
+function handleFile(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+
+  if (ext === 'txt'){
+    const reader = new FileReader();
+    reader.onload = async evt => {
+      try{
+        const parsed = parseDelimitedText(evt.target.result);
+        if (!parsed) return;
+        await applyParsedData(parsed.headers, parsed.rows, file.name);
+      }catch(err){
+        console.error(err);
+        alert('Could not read that .txt file.');
+      }
+    };
+    reader.readAsText(file);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async evt => {
+    try{
+      const data = new Uint8Array(evt.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      if (!json.length){
+        alert('This sheet looks empty.');
+        return;
+      }
+      const parsedHeaders = json[0].map(h => String(h ?? '').trim() || '(no name)');
+      const parsedRows = json.slice(1).filter(r => r.some(c => String(c ?? '').trim() !== ''));
+      if (!parsedRows.length){
+        alert('No data rows found.');
+        return;
+      }
+      await applyParsedData(parsedHeaders, parsedRows, file.name);
+    }catch(err){
+      console.error(err);
+      alert('Could not read that file. Make sure it is a valid .xlsx, .xls, .csv or .txt.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseDelimitedText(text){
+  const lines = text.split(/\r\n|\r|\n/).filter(l => l.trim() !== '');
+  if (!lines.length){
+    alert('This file looks empty.');
+    return null;
+  }
+  const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : null);
+  let parsedHeaders, parsedRows;
+  if (delimiter){
+    parsedHeaders = lines[0].split(delimiter).map(h => h.trim() || '(no name)');
+    parsedRows = lines.slice(1).map(l => l.split(delimiter).map(c => c.trim()));
+    if (!parsedRows.length){
+      alert('No data rows found.');
+      return null;
+    }
+  } else {
+    parsedHeaders = ['Item'];
+    parsedRows = lines.map(l => [l.trim()]);
+  }
+  return { headers: parsedHeaders, rows: parsedRows };
+}
+
+async function applyParsedData(parsedHeaders, parsedRows, displayName){
+  headers = parsedHeaders;
+  rows = parsedRows;
+  fileNameEl.textContent = displayName;
+  rowCountEl.textContent = rows.length;
+  uploadArea.style.display = 'none';
+  emptyState.style.display = 'none';
+  afterUpload.style.display = 'block';
+  setupColumnSelects();
+  buildKeys();
+  const ok = await saveDataset();
+  if (ok){
+    renderTable();
+    startPolling();
+  }
+}
+
+function setupColumnSelects(presetTickIndex, presetQtyIndex){
+  colSelect.innerHTML = '';
+  qtyColSelect.innerHTML = '';
+
+  const noneOpt = document.createElement('option');
+  noneOpt.value = '-1';
+  noneOpt.textContent = '(none — always a checkbox)';
+  qtyColSelect.appendChild(noneOpt);
+
+  headers.forEach((h, i) => {
+    const opt1 = document.createElement('option');
+    opt1.value = i;
+    opt1.textContent = h;
+    colSelect.appendChild(opt1);
+
+    const opt2 = document.createElement('option');
+    opt2.value = i;
+    opt2.textContent = h;
+    qtyColSelect.appendChild(opt2);
+  });
+
+  if (typeof presetTickIndex === 'number'){
+    tickColIndex = presetTickIndex;
+  } else {
+    const guessIdx = headers.findIndex(h => /check|tick|done|complete|status|ok\b/i.test(h));
+    tickColIndex = guessIdx >= 0 ? guessIdx : headers.length - 1;
+  }
+  colSelect.value = tickColIndex;
+
+  if (typeof presetQtyIndex === 'number'){
+    qtyColIndex = presetQtyIndex;
+  } else {
+    const qtyGuess = headers.findIndex(h => /qty|quantity|quant/i.test(h));
+    qtyColIndex = qtyGuess >= 0 ? qtyGuess : -1;
+  }
+  qtyColSelect.value = qtyColIndex;
+
+  colSelect.onchange = async () => {
+    tickColIndex = parseInt(colSelect.value, 10);
+    const ok = await saveDataset();
+    if (ok) renderTable();
+  };
+  qtyColSelect.onchange = async () => {
+    qtyColIndex = parseInt(qtyColSelect.value, 10);
+    const ok = await saveDataset();
+    if (ok) renderTable();
+  };
+}
+
+function hashRow(rowArr){
+  const str = rowArr.map(c => String(c ?? '').trim().toLowerCase()).join('|');
+  let h = 0;
+  for (let i = 0; i < str.length; i++){
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return 'r' + (h >>> 0).toString(36);
+}
+
+function buildKeys(){
+  const seen = {};
+  rowKeys = rows.map((r) => {
+    let base = hashRow(r);
+    seen[base] = (seen[base] || 0) + 1;
+    return seen[base] > 1 ? base + 'd' + seen[base] : base;
+  });
+}
+
+function parseExpectedQty(row){
+  if (qtyColIndex < 0 || !row[qtyColIndex] && row[qtyColIndex] !== 0) return 1;
+  const raw = String(row[qtyColIndex]).trim();
+  if (!raw) return 1;
+  const normalized = raw.replace(/\./g, '').replace(',', '.').replace(/[^0-9.\-]/g, '');
+  const n = Math.round(Math.abs(parseFloat(normalized)));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+async function loadState(){
+  try{
+    const res = await fetch('/api/state');
+    if (!res.ok) return null;
+    return await res.json();
+  }catch(e){
+    console.error('Could not load state', e);
+    return null;
+  }
+}
+
+async function saveDataset(){
+  try{
+    const res = await fetch('/api/dataset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ headers, rows, tickColIndex, qtyColIndex })
+    });
+    if (!res.ok){
+      alert('Could not save the sheet. Please try again.');
+      return false;
+    }
+    return true;
+  }catch(e){
+    console.error(e);
+    alert('Could not reach the server to save the sheet.');
+    return false;
+  }
+}
+
+async function saveTick(key, value){
+  try{
+    await fetch('/api/tick', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key, qty: value.qty, date: value.date })
+    });
+  }catch(e){
+    console.error('Failed to save progress', e);
+  }
+}
+
+async function resetAllTicks(){
+  try{
+    const res = await fetch('/api/reset', { method: 'POST' });
+    return res.ok;
+  }catch(e){
+    console.error(e);
+    return false;
+  }
+}
+
+function updateProgress(){
+  let doneRows = 0;
+  rows.forEach((row, ri) => {
+    const expected = parseExpectedQty(row);
+    const state = allTicks[rowKeys[ri]];
+    const done = state ? (state.qty || 0) : 0;
+    if (done >= expected) doneRows++;
+  });
+  progressLine.innerHTML = '<strong>' + doneRows + '</strong> of ' + rows.length + ' complete';
+}
+
+function applySearchFilter(){
+  const term = searchInput.value.trim().toLowerCase();
+  const trs = document.querySelectorAll('#dataTable tbody tr');
+  let visible = 0;
+  trs.forEach(tr => {
+    const text = tr.getAttribute('data-search') || '';
+    const match = !term || text.includes(term);
+    tr.classList.toggle('hidden-row', !match);
+    if (match) visible++;
+  });
+  searchCount.textContent = term ? (visible + ' of ' + rows.length + ' rows match') : '';
+}
+
+searchInput.addEventListener('input', applySearchFilter);
+
+function renderTable(){
+  const table = document.getElementById('dataTable');
+  table.innerHTML = '';
+  rowRefs = [];
+
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  headers.forEach((h, i) => {
+    const th = document.createElement('th');
+    th.textContent = i === tickColIndex ? '✓' : h;
+    if (i === tickColIndex) th.classList.add('tick-col');
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  table.appendChild(tbody);
+
+  rows.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    const expected = parseExpectedQty(row);
+    const state = allTicks[rowKeys[ri]];
+    const done = state ? (state.qty || 0) : 0;
+    const isComplete = done >= expected;
+    if (isComplete) tr.classList.add('done');
+    tr.setAttribute('data-search', row.map(c => String(c ?? '')).join(' ').toLowerCase());
+
+    const ref = { tr, expected, control: null, td: null };
+
+    row.forEach((cell, ci) => {
+      const td = document.createElement('td');
+      td.setAttribute('data-label', headers[ci]);
+      if (ci === tickColIndex){
+        td.classList.add('tick-cell');
+        ref.td = td;
+
+        if (expected <= 1){
+          const label = document.createElement('label');
+          label.className = 'stamp-box';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = done >= 1;
+          const mark = document.createElement('span');
+          mark.className = 'stamp-mark';
+          mark.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          label.appendChild(input);
+          label.appendChild(mark);
+          td.appendChild(label);
+          if (done >= 1 && state && state.date){
+            const dateEl = document.createElement('span');
+            dateEl.className = 'stamp-date';
+            dateEl.textContent = state.date;
+            td.appendChild(dateEl);
+          }
+          input.addEventListener('change', async () => {
+            const newQty = input.checked ? 1 : 0;
+            const dateStr = input.checked ? new Date().toLocaleDateString('en-US') : '';
+            allTicks[rowKeys[ri]] = { qty: newQty, date: dateStr };
+            await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+            tr.classList.toggle('done', newQty >= 1);
+            const existingDate = td.querySelector('.stamp-date');
+            if (existingDate) existingDate.remove();
+            if (newQty >= 1){
+              const dateEl = document.createElement('span');
+              dateEl.className = 'stamp-date';
+              dateEl.textContent = dateStr;
+              td.appendChild(dateEl);
+            }
+            updateProgress();
+          });
+          ref.control = input;
+        } else {
+          const wrap = document.createElement('div');
+          wrap.className = 'qty-input-wrap';
+          const numInput = document.createElement('input');
+          numInput.type = 'number';
+          numInput.className = 'qty-input' + (done >= expected ? ' full' : '');
+          numInput.min = '0';
+          numInput.max = String(expected);
+          numInput.step = '1';
+          numInput.value = String(done);
+          const totalLabel = document.createElement('span');
+          totalLabel.className = 'qty-total';
+          totalLabel.textContent = '/ ' + expected;
+          wrap.appendChild(numInput);
+          wrap.appendChild(totalLabel);
+          td.appendChild(wrap);
+          if (done >= 1 && state && state.date){
+            const dateEl = document.createElement('span');
+            dateEl.className = 'stamp-date';
+            dateEl.textContent = state.date;
+            td.appendChild(dateEl);
+          }
+
+          const commitQty = async () => {
+            let val = parseInt(numInput.value, 10);
+            if (!Number.isFinite(val) || val < 0) val = 0;
+            if (val > expected) val = expected;
+            numInput.value = String(val);
+            numInput.classList.toggle('full', val >= expected);
+            const dateStr = val > 0 ? new Date().toLocaleDateString('en-US') : '';
+            allTicks[rowKeys[ri]] = { qty: val, date: dateStr };
+            await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+            tr.classList.toggle('done', val >= expected);
+            const existingDate = td.querySelector('.stamp-date');
+            if (existingDate) existingDate.remove();
+            if (val > 0){
+              const dateEl = document.createElement('span');
+              dateEl.className = 'stamp-date';
+              dateEl.textContent = dateStr;
+              td.appendChild(dateEl);
+            }
+            updateProgress();
+          };
+          numInput.addEventListener('change', commitQty);
+          ref.control = numInput;
+        }
+      } else {
+        td.textContent = cell;
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+    rowRefs.push(ref);
+  });
+
+  updateProgress();
+  applySearchFilter();
+}
+
+function applyRemoteState(newTicks){
+  let changed = false;
+  rows.forEach((row, ri) => {
+    const key = rowKeys[ri];
+    const incoming = newTicks[key] || { qty: 0, date: '' };
+    const current = allTicks[key] || { qty: 0, date: '' };
+    if (incoming.qty === current.qty && incoming.date === current.date) return;
+
+    const ref = rowRefs[ri];
+    if (!ref) { allTicks[key] = incoming; changed = true; return; }
+    if (document.activeElement === ref.control) return; // don't clobber active typing
+
+    allTicks[key] = incoming;
+    changed = true;
+
+    const isComplete = incoming.qty >= ref.expected;
+    ref.tr.classList.toggle('done', isComplete);
+
+    if (ref.control.type === 'checkbox'){
+      ref.control.checked = incoming.qty >= 1;
+    } else {
+      ref.control.value = String(incoming.qty);
+      ref.control.classList.toggle('full', isComplete);
+    }
+
+    const existingDate = ref.td.querySelector('.stamp-date');
+    if (existingDate) existingDate.remove();
+    if (incoming.qty > 0 && incoming.date){
+      const dateEl = document.createElement('span');
+      dateEl.className = 'stamp-date';
+      dateEl.textContent = incoming.date;
+      ref.td.appendChild(dateEl);
+    }
+  });
+  if (changed) updateProgress();
+}
+
+async function pollForUpdates(){
+  if (document.hidden) return;
+  const state = await loadState();
+  if (state && state.ticks) applyRemoteState(state.ticks);
+}
+
+function startPolling(){
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollForUpdates, 1500);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollForUpdates();
+});
+
+resetBtn.addEventListener('click', async () => {
+  if (!confirm('This clears every check mark and quantity saved here (for everyone using this page). Continue?')) return;
+  const ok = await resetAllTicks();
+  if (ok){
+    allTicks = {};
+    renderTable();
+  }
+});
+
+async function init(){
+  const state = await loadState();
+  if (state && state.headers && state.rows){
+    headers = state.headers;
+    rows = state.rows;
+    allTicks = state.ticks || {};
+    uploadArea.style.display = 'none';
+    emptyState.style.display = 'none';
+    afterUpload.style.display = 'block';
+    if (isAdmin){
+      fileNameEl.textContent = '(current sheet)';
+      rowCountEl.textContent = rows.length;
+      setupColumnSelects(state.tickColIndex, state.qtyColIndex);
+    } else {
+      tickColIndex = state.tickColIndex;
+      qtyColIndex = state.qtyColIndex;
+    }
+    buildKeys();
+    renderTable();
+    startPolling();
+  } else if (isAdmin){
+    uploadArea.style.display = 'block';
+  } else {
+    emptyState.style.display = 'block';
+  }
+}
+init();
+</script>
+</body>
+</html>
