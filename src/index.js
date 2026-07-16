@@ -5,16 +5,20 @@ async function getDataset(env) {
 
 async function getAllTicks(env) {
   const ticks = {};
+  const allKeys = [];
   let cursor;
   for (;;) {
     const list = await env.DATA.list({ prefix: 'tick:', cursor });
-    for (const k of list.keys) {
-      const raw = await env.DATA.get(k.name);
-      if (raw) ticks[k.name.slice('tick:'.length)] = JSON.parse(raw);
-    }
+    allKeys.push(...list.keys);
     if (list.list_complete) break;
     cursor = list.cursor;
   }
+  // Read every tick in parallel instead of one at a time — this is the
+  // biggest speed win when there are many rows.
+  const results = await Promise.all(allKeys.map(k => env.DATA.get(k.name)));
+  allKeys.forEach((k, i) => {
+    if (results[i]) ticks[k.name.slice('tick:'.length)] = JSON.parse(results[i]);
+  });
   return ticks;
 }
 
@@ -30,7 +34,7 @@ export default {
     const url = new URL(request.url);
 
     try {
-      // Public: read the current sheet + all progress marks
+      // Public: full sheet + all progress marks (used once, on page load)
       if (url.pathname === '/api/state' && request.method === 'GET') {
         const dataset = await getDataset(env);
         const ticks = await getAllTicks(env);
@@ -41,6 +45,12 @@ export default {
           qtyColIndex: dataset ? dataset.qtyColIndex : -1,
           ticks
         });
+      }
+
+      // Public: progress marks ONLY — small and fast, used for polling
+      if (url.pathname === '/api/ticks' && request.method === 'GET') {
+        const ticks = await getAllTicks(env);
+        return json({ ticks });
       }
 
       // Replace the sheet — its own key, never contends with tick writes
