@@ -1,5 +1,5 @@
 {
-  "name": "check-list-tour-friday",
+  "name": "checktourbo",
   "compatibility_date": "2026-07-15",
   "main": "src/index.js",
   "assets": {
@@ -10,7 +10,7 @@
   "kv_namespaces": [
     {
       "binding": "DATA",
-      "id": "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+      "id": "0c5315d5807c4cebbf4dd6faa5a4106c"
     }
   ]
 }
