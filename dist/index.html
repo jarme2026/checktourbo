@@ -633,6 +633,7 @@ function renderTable(){
             allTicks[rowKeys[ri]] = { qty: newQty, date: dateStr };
             ref.lastEditAt = Date.now();
             await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+            refreshAfterEdit();
             tr.classList.toggle('done', newQty >= 1);
             const existingDate = td.querySelector('.stamp-date');
             if (existingDate) existingDate.remove();
@@ -704,8 +705,9 @@ function renderTable(){
             }
             updateProgress();
             if (saveTimers[ri]) clearTimeout(saveTimers[ri]);
-            saveTimers[ri] = setTimeout(() => {
-              saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+            saveTimers[ri] = setTimeout(async () => {
+              await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+              refreshAfterEdit();
             }, 450);
           };
 
@@ -782,9 +784,15 @@ async function pollForUpdates(){
   if (data && data.ticks) applyRemoteState(data.ticks);
 }
 
+async function refreshAfterEdit(){
+  const data = await loadTicksOnly();
+  if (data && data.ticks) applyRemoteState(data.ticks);
+}
+
 function startPolling(){
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(pollForUpdates, 1500);
+  // No more timer-based polling — refresh happens right after a check
+  // or quantity change instead (see refreshAfterEdit below), and when the
+  // tab regains focus. This avoids constant background requests.
 }
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) pollForUpdates();
