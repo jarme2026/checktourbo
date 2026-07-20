@@ -182,19 +182,24 @@
       justify-content: space-between; align-items: flex-start; gap: 14px;
       font-size: 15px; word-break: break-word;
     }
-    tbody td:not(.tick-cell)::before{
+    tbody td:not(.tick-cell)::before, tbody td.tick-cell-qty::before{
       content: attr(data-label); color: var(--ink-soft); font-size: 11px;
       text-transform: uppercase; letter-spacing: 0.4px; font-family: 'Courier New', monospace;
       flex-shrink: 0; padding-top: 2px;
     }
-    td.tick-cell{ position: absolute; top: 12px; right: 12px; width: auto; padding: 0; }
+    tbody tr:not(.qty-row){ padding: 14px 100px 14px 16px; }
+    tbody tr.qty-row{ padding: 14px 16px; }
+    td.tick-cell:not(.tick-cell-qty){ position: absolute; top: 12px; right: 12px; width: auto; padding: 0; }
+    td.tick-cell-qty{ padding: 5px 0; }
     .stamp-box{ width: 46px; height: 46px; }
     .stamp-mark{ width: 40px; height: 40px; border-width: 2.5px; }
     .stamp-mark svg{ width: 22px; height: 22px; }
     .stamp-date{ position: absolute; top: 50px; right: 0; white-space: nowrap; }
-    .qty-input-wrap{ gap: 8px; }
+    .tick-cell-qty .stamp-date{ position: static; display: block; text-align: right; }
+    .qty-input-wrap{ flex-direction: row; gap: 8px; align-items: center; }
     .qty-btn{ width: 34px; height: 34px; font-size: 20px; }
     .qty-value{ font-size: 16px; min-width: 26px; }
+    .qty-total{ font-size: 12px; }
     .progress-line{ font-size: 12px; margin-bottom: 12px; }
   }
 </style>
@@ -561,13 +566,22 @@ function applySearchFilter(){
   const term = searchInput.value.trim().toLowerCase();
   const trs = document.querySelectorAll('#dataTable tbody tr');
   let visible = 0;
+  let matches = 0;
   trs.forEach(tr => {
     const text = tr.getAttribute('data-search') || '';
-    const match = !term || text.includes(term);
-    tr.classList.toggle('hidden-row', !match);
-    if (match) visible++;
+    const isComplete = tr.getAttribute('data-complete') === '1';
+    const matchesTerm = !term || text.includes(term);
+    // With no search: hide completed items to keep the list light.
+    // With a search: show anything matching, even if already checked —
+    // that's how a checked item can be found again and un-checked.
+    const show = term ? matchesTerm : (matchesTerm && !isComplete);
+    tr.classList.toggle('hidden-row', !show);
+    if (show) visible++;
+    if (term && matchesTerm) matches++;
   });
-  searchCount.textContent = term ? (visible + ' of ' + rows.length + ' rows match') : '';
+  searchCount.textContent = term
+    ? (matches + ' of ' + rows.length + ' rows match')
+    : 'Checked items are hidden — search to find and undo one.';
 }
 
 searchInput.addEventListener('input', applySearchFilter);
@@ -598,6 +612,8 @@ function renderTable(){
     const done = state ? (state.qty || 0) : 0;
     const isComplete = done >= expected;
     if (isComplete) tr.classList.add('done');
+    if (expected > 1) tr.classList.add('qty-row');
+    tr.setAttribute('data-complete', isComplete ? '1' : '0');
     tr.setAttribute('data-search', row.map(c => String(c ?? '')).join(' ').toLowerCase());
 
     const ref = { tr, expected, control: null, td: null };
@@ -607,6 +623,7 @@ function renderTable(){
       td.setAttribute('data-label', headers[ci]);
       if (ci === tickColIndex){
         td.classList.add('tick-cell');
+        if (expected > 1) td.classList.add('tick-cell-qty');
         ref.td = td;
 
         if (expected <= 1){
@@ -632,9 +649,8 @@ function renderTable(){
             const dateStr = input.checked ? new Date().toLocaleDateString('en-US') : '';
             allTicks[rowKeys[ri]] = { qty: newQty, date: dateStr };
             ref.lastEditAt = Date.now();
-            await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
-            refreshAfterEdit();
             tr.classList.toggle('done', newQty >= 1);
+            tr.setAttribute('data-complete', newQty >= 1 ? '1' : '0');
             const existingDate = td.querySelector('.stamp-date');
             if (existingDate) existingDate.remove();
             if (newQty >= 1){
@@ -644,6 +660,9 @@ function renderTable(){
               td.appendChild(dateEl);
             }
             updateProgress();
+            applySearchFilter();
+            await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+            refreshAfterEdit();
           });
           ref.control = input;
         } else {
@@ -687,7 +706,10 @@ function renderTable(){
             valueEl.classList.toggle('full', val >= expected);
             minusBtn.disabled = val <= 0;
             plusBtn.disabled = val >= expected;
-            tr.classList.toggle('done', val >= expected);
+            const isComplete = val >= expected;
+            tr.classList.toggle('done', isComplete);
+            tr.setAttribute('data-complete', isComplete ? '1' : '0');
+            applySearchFilter();
           };
           applyQtyUI(currentVal);
 
@@ -759,6 +781,7 @@ function applyRemoteState(newTicks){
 
     const isComplete = incoming.qty >= ref.expected;
     ref.tr.classList.toggle('done', isComplete);
+    ref.tr.setAttribute('data-complete', isComplete ? '1' : '0');
 
     if (ref.control.type === 'checkbox'){
       ref.control.checked = incoming.qty >= 1;
@@ -775,7 +798,10 @@ function applyRemoteState(newTicks){
       ref.td.appendChild(dateEl);
     }
   });
-  if (changed) updateProgress();
+  if (changed){
+    updateProgress();
+    applySearchFilter();
+  }
 }
 
 async function pollForUpdates(){
