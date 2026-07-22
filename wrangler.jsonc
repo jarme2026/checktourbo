@@ -7,10 +7,12 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
-  "kv_namespaces": [
-    {
-      "binding": "DATA",
-      "id": "0c5315d5807c4cebbf4dd6faa5a4106c"
-    }
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHECKLIST", "class_name": "ChecklistState" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChecklistState"] }
   ]
 }
