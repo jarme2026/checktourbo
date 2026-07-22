@@ -525,15 +525,30 @@ async function saveDataset(){
   }
 }
 
-async function saveTick(key, value){
+async function saveTickSet(key, value){
   try{
     await fetch('/api/tick', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ key, qty: value.qty, date: value.date })
+      body: JSON.stringify({ key, mode: 'set', value: value.qty })
     });
   }catch(e){
     console.error('Failed to save progress', e);
+  }
+}
+
+async function saveTickDelta(key, delta, expected){
+  try{
+    const res = await fetch('/api/tick', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key, mode: 'delta', value: delta, expected })
+    });
+    if (!res.ok) return null;
+    return await res.json(); // { ok, qty, date } — the server's authoritative value
+  }catch(e){
+    console.error('Failed to save progress', e);
+    return null;
   }
 }
 
@@ -661,7 +676,7 @@ function renderTable(){
             }
             updateProgress();
             applySearchFilter();
-            await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+            await saveTickSet(rowKeys[ri], allTicks[rowKeys[ri]]);
             refreshAfterEdit();
           });
           ref.control = input;
@@ -700,6 +715,7 @@ function renderTable(){
           }
 
           let currentVal = done;
+          let pendingDelta = 0;
 
           const applyQtyUI = (val) => {
             valueEl.textContent = String(val);
@@ -713,38 +729,54 @@ function renderTable(){
           };
           applyQtyUI(currentVal);
 
-          const scheduleSave = (val) => {
-            const dateStr = val > 0 ? new Date().toLocaleDateString('en-US') : '';
-            allTicks[rowKeys[ri]] = { qty: val, date: dateStr };
-            ref.lastEditAt = Date.now();
+          const setDateLabel = (dateStr) => {
             const existingDate = td.querySelector('.stamp-date');
             if (existingDate) existingDate.remove();
-            if (val > 0){
+            if (dateStr){
               const dateEl = document.createElement('span');
               dateEl.className = 'stamp-date';
               dateEl.textContent = dateStr;
               td.appendChild(dateEl);
             }
-            updateProgress();
+          };
+
+          const flushDelta = () => {
             if (saveTimers[ri]) clearTimeout(saveTimers[ri]);
             saveTimers[ri] = setTimeout(async () => {
-              await saveTick(rowKeys[ri], allTicks[rowKeys[ri]]);
+              const delta = pendingDelta;
+              pendingDelta = 0;
+              if (delta === 0) return;
+              // The server applies this delta atomically (Durable Object)
+              // and tells us the real, authoritative result — two people
+              // clicking +1 at the same moment can never cancel each
+              // other out, unlike sending an absolute number.
+              const result = await saveTickDelta(rowKeys[ri], delta, expected);
+              if (result && typeof result.qty === 'number'){
+                currentVal = result.qty;
+                allTicks[rowKeys[ri]] = { qty: result.qty, date: result.date };
+                applyQtyUI(currentVal);
+                setDateLabel(result.date);
+                updateProgress();
+              }
               refreshAfterEdit();
             }, 450);
           };
 
-          minusBtn.addEventListener('click', () => {
-            if (currentVal <= 0) return;
-            currentVal -= 1;
+          const bump = (amount) => {
+            const next = currentVal + amount;
+            if (next < 0 || next > expected) return;
+            currentVal = next;
+            pendingDelta += amount;
+            allTicks[rowKeys[ri]] = { qty: currentVal, date: currentVal > 0 ? new Date().toLocaleDateString('en-US') : '' };
+            ref.lastEditAt = Date.now();
             applyQtyUI(currentVal);
-            scheduleSave(currentVal);
-          });
-          plusBtn.addEventListener('click', () => {
-            if (currentVal >= expected) return;
-            currentVal += 1;
-            applyQtyUI(currentVal);
-            scheduleSave(currentVal);
-          });
+            setDateLabel(allTicks[rowKeys[ri]].date);
+            updateProgress();
+            flushDelta();
+          };
+
+          minusBtn.addEventListener('click', () => bump(-1));
+          plusBtn.addEventListener('click', () => bump(1));
 
           ref.control = wrap;
           ref.getQtyVal = () => currentVal;
