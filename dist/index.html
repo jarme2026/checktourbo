@@ -527,13 +527,16 @@ async function saveDataset(){
 
 async function saveTickSet(key, value){
   try{
-    await fetch('/api/tick', {
+    const res = await fetch('/api/tick', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ key, mode: 'set', value: value.qty })
     });
+    if (!res.ok) return null;
+    return await res.json(); // { ok, qty, date, ticks }
   }catch(e){
     console.error('Failed to save progress', e);
+    return null;
   }
 }
 
@@ -545,7 +548,7 @@ async function saveTickDelta(key, delta, expected){
       body: JSON.stringify({ key, mode: 'delta', value: delta, expected })
     });
     if (!res.ok) return null;
-    return await res.json(); // { ok, qty, date } — the server's authoritative value
+    return await res.json(); // { ok, qty, date, ticks } — the server's authoritative value
   }catch(e){
     console.error('Failed to save progress', e);
     return null;
@@ -676,8 +679,8 @@ function renderTable(){
             }
             updateProgress();
             applySearchFilter();
-            await saveTickSet(rowKeys[ri], allTicks[rowKeys[ri]]);
-            refreshAfterEdit();
+            const result = await saveTickSet(rowKeys[ri], allTicks[rowKeys[ri]]);
+            if (result && result.ticks) applyRemoteState(result.ticks);
           });
           ref.control = input;
         } else {
@@ -758,7 +761,7 @@ function renderTable(){
                 setDateLabel(result.date);
                 updateProgress();
               }
-              refreshAfterEdit();
+              if (result && result.ticks) applyRemoteState(result.ticks);
             }, 450);
           };
 
