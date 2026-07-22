@@ -80,7 +80,10 @@ export class ChecklistState {
         ticks[body.key] = { qty: newQty, date: newDate };
         await this.state.storage.put('ticks', ticks);
 
-        return json({ ok: true, qty: newQty, date: newDate });
+        // Return the full ticks map too, so the client can pick up
+        // anyone else's changes in this same round trip — no second
+        // request needed just to "refresh".
+        return json({ ok: true, qty: newQty, date: newDate, ticks });
       }
 
       // Clear all progress marks
