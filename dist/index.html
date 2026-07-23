@@ -59,6 +59,20 @@
   .drop p{ margin: 4px 0; font-size: 14px; color: var(--ink-soft); }
   .drop strong{ color: var(--ink); font-family: 'Courier New', monospace; }
   input[type=file]{ display:none; }
+  .or-divider{
+    display: flex; align-items: center; text-align: center;
+    color: var(--ink-soft); font-size: 12px; margin: 14px 0;
+    font-family: 'Courier New', monospace; text-transform: uppercase;
+  }
+  .or-divider::before, .or-divider::after{
+    content: ''; flex: 1; border-top: 1px solid var(--paper-line);
+  }
+  .or-divider span{ padding: 0 12px; }
+  .link-row{ display: flex; gap: 10px; }
+  .link-input{
+    flex: 1; font-family: inherit; font-size: 14px; padding: 9px 12px;
+    border-radius: 5px; border: 1px solid var(--board-dark); background: var(--card); color: var(--ink);
+  }
   .controls{ display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 22px; }
   .field{ display:flex; flex-direction:column; gap:6px; }
   .field label{
@@ -224,6 +238,13 @@
         <p>.xlsx, .xls, .csv or .txt</p>
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.txt">
+
+      <div class="or-divider"><span>or</span></div>
+
+      <div class="link-row">
+        <input type="text" id="oneDriveLink" class="link-input" placeholder="Paste a OneDrive/SharePoint share link…">
+        <button type="button" class="btn" id="loadLinkBtn">Load from link</button>
+      </div>
     </div>
 
     <div id="emptyState" class="empty" style="display:none;">
@@ -324,6 +345,14 @@ changeFile.addEventListener('click', e => {
   fileInput.value = '';
 });
 
+document.getElementById('loadLinkBtn').addEventListener('click', () => {
+  const input = document.getElementById('oneDriveLink');
+  loadFromRemoteLink(input.value);
+});
+document.getElementById('oneDriveLink').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadFromRemoteLink(e.target.value);
+});
+
 function handleFile(file){
   const ext = file.name.split('.').pop().toLowerCase();
 
@@ -345,28 +374,64 @@ function handleFile(file){
 
   const reader = new FileReader();
   reader.onload = async evt => {
-    try{
-      const data = new Uint8Array(evt.target.result);
-      const wb = XLSX.read(data, { type: 'array' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-      if (!json.length){
-        alert('This sheet looks empty.');
-        return;
-      }
-      const parsedHeaders = json[0].map(h => String(h ?? '').trim() || '(no name)');
-      const parsedRows = json.slice(1).filter(r => r.some(c => String(c ?? '').trim() !== ''));
-      if (!parsedRows.length){
-        alert('No data rows found.');
-        return;
-      }
-      await applyParsedData(parsedHeaders, parsedRows, file.name);
-    }catch(err){
-      console.error(err);
-      alert('Could not read that file. Make sure it is a valid .xlsx, .xls, .csv or .txt.');
-    }
+    await processWorkbookArrayBuffer(evt.target.result, file.name);
   };
   reader.readAsArrayBuffer(file);
+}
+
+async function loadFromRemoteLink(link){
+  const trimmed = link.trim();
+  if (!trimmed) return;
+  const btn = document.getElementById('loadLinkBtn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+  try{
+    const res = await fetch('/api/fetch-remote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: trimmed })
+    });
+    if (!res.ok){
+      let msg = 'Could not load that link.';
+      try{ const body = await res.json(); if (body.error) msg = body.error; }catch(e){}
+      alert(msg);
+      return;
+    }
+    const buf = await res.arrayBuffer();
+    let niceName = 'OneDrive file';
+    try{ niceName = new URL(trimmed).pathname.split('/').pop() || niceName; }catch(e){}
+    await processWorkbookArrayBuffer(buf, niceName);
+  }catch(e){
+    console.error(e);
+    alert('Could not reach the server to load that link.');
+  }finally{
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+async function processWorkbookArrayBuffer(arrayBuffer, displayName){
+  try{
+    const data = new Uint8Array(arrayBuffer);
+    const wb = XLSX.read(data, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (!json.length){
+      alert('This sheet looks empty.');
+      return;
+    }
+    const parsedHeaders = json[0].map(h => String(h ?? '').trim() || '(no name)');
+    const parsedRows = json.slice(1).filter(r => r.some(c => String(c ?? '').trim() !== ''));
+    if (!parsedRows.length){
+      alert('No data rows found.');
+      return;
+    }
+    await applyParsedData(parsedHeaders, parsedRows, displayName);
+  }catch(err){
+    console.error(err);
+    alert('Could not read that file. Make sure it is a valid .xlsx, .xls, .csv or .txt.');
+  }
 }
 
 function parseDelimitedText(text){
