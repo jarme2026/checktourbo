@@ -110,6 +110,49 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Fetch a file from a OneDrive/SharePoint share link on the server
+    // side, where CORS restrictions don't apply — the browser never talks
+    // to Microsoft directly, only to us.
+    if (url.pathname === '/api/fetch-remote' && request.method === 'POST') {
+      let body;
+      try {
+        body = await request.json();
+      } catch (err) {
+        return json({ error: 'Invalid request' }, 400);
+      }
+
+      let target;
+      try {
+        target = new URL(body.url);
+      } catch (err) {
+        return json({ error: 'That is not a valid URL' }, 400);
+      }
+
+      const allowedHosts = /(^|\.)onedrive\.live\.com$|(^|\.)sharepoint\.com$|^1drv\.ms$/i;
+      if (!allowedHosts.test(target.hostname)) {
+        return json({ error: 'Only OneDrive or SharePoint links are supported' }, 400);
+      }
+
+      // Force a direct file download instead of the web viewer page
+      if (!target.searchParams.has('download')) {
+        target.searchParams.set('download', '1');
+      }
+
+      try {
+        const fileRes = await fetch(target.toString(), { redirect: 'follow' });
+        if (!fileRes.ok) {
+          return json({ error: 'Could not download that file (status ' + fileRes.status + '). Make sure the link is set to "Anyone with the link can view".' }, 502);
+        }
+        const buf = await fileRes.arrayBuffer();
+        return new Response(buf, {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' }
+        });
+      } catch (err) {
+        return json({ error: String(err && err.message || err) }, 502);
+      }
+    }
+
     if (url.pathname.startsWith('/api/')) {
       // A single, fixed Durable Object instance holds this project's data.
       const id = env.CHECKLIST.idFromName('singleton');
