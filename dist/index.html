@@ -59,20 +59,6 @@
   .drop p{ margin: 4px 0; font-size: 14px; color: var(--ink-soft); }
   .drop strong{ color: var(--ink); font-family: 'Courier New', monospace; }
   input[type=file]{ display:none; }
-  .or-divider{
-    display: flex; align-items: center; text-align: center;
-    color: var(--ink-soft); font-size: 12px; margin: 14px 0;
-    font-family: 'Courier New', monospace; text-transform: uppercase;
-  }
-  .or-divider::before, .or-divider::after{
-    content: ''; flex: 1; border-top: 1px solid var(--paper-line);
-  }
-  .or-divider span{ padding: 0 12px; }
-  .link-row{ display: flex; gap: 10px; }
-  .link-input{
-    flex: 1; font-family: inherit; font-size: 14px; padding: 9px 12px;
-    border-radius: 5px; border: 1px solid var(--board-dark); background: var(--card); color: var(--ink);
-  }
   .controls{ display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 22px; }
   .field{ display:flex; flex-direction:column; gap:6px; }
   .field label{
@@ -135,6 +121,11 @@
   }
   .qty-btn:hover:not(:disabled){ background: var(--paper-line); }
   .qty-btn:disabled{ opacity: 0.35; cursor: default; }
+  .qty-all-btn{
+    width: auto; padding: 0 8px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.3px; border-color: var(--stamp-green); color: var(--stamp-green);
+  }
+  .qty-all-btn:hover:not(:disabled){ background: var(--stamp-green-bg); }
   .qty-value{
     min-width: 22px; text-align:center; font-size: 14px; font-weight: bold;
     font-family: 'Courier New', monospace; color: var(--ink);
@@ -212,6 +203,7 @@
     .tick-cell-qty .stamp-date{ position: static; display: block; text-align: right; }
     .qty-input-wrap{ flex-direction: row; gap: 8px; align-items: center; }
     .qty-btn{ width: 34px; height: 34px; font-size: 20px; }
+    .qty-all-btn{ width: auto; height: 34px; font-size: 12px; padding: 0 10px; }
     .qty-value{ font-size: 16px; min-width: 26px; }
     .qty-total{ font-size: 12px; }
     .progress-line{ font-size: 12px; margin-bottom: 12px; }
@@ -238,13 +230,6 @@
         <p>.xlsx, .xls, .csv or .txt</p>
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.txt">
-
-      <div class="or-divider"><span>or</span></div>
-
-      <div class="link-row">
-        <input type="text" id="oneDriveLink" class="link-input" placeholder="Paste a OneDrive/SharePoint share link…">
-        <button type="button" class="btn" id="loadLinkBtn">Load from link</button>
-      </div>
     </div>
 
     <div id="emptyState" class="empty" style="display:none;">
@@ -345,14 +330,6 @@ changeFile.addEventListener('click', e => {
   fileInput.value = '';
 });
 
-document.getElementById('loadLinkBtn').addEventListener('click', () => {
-  const input = document.getElementById('oneDriveLink');
-  loadFromRemoteLink(input.value);
-});
-document.getElementById('oneDriveLink').addEventListener('keydown', e => {
-  if (e.key === 'Enter') loadFromRemoteLink(e.target.value);
-});
-
 function handleFile(file){
   const ext = file.name.split('.').pop().toLowerCase();
 
@@ -377,38 +354,6 @@ function handleFile(file){
     await processWorkbookArrayBuffer(evt.target.result, file.name);
   };
   reader.readAsArrayBuffer(file);
-}
-
-async function loadFromRemoteLink(link){
-  const trimmed = link.trim();
-  if (!trimmed) return;
-  const btn = document.getElementById('loadLinkBtn');
-  const originalText = btn.textContent;
-  btn.textContent = 'Loading…';
-  btn.disabled = true;
-  try{
-    const res = await fetch('/api/fetch-remote', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: trimmed })
-    });
-    if (!res.ok){
-      let msg = 'Could not load that link.';
-      try{ const body = await res.json(); if (body.error) msg = body.error; }catch(e){}
-      alert(msg);
-      return;
-    }
-    const buf = await res.arrayBuffer();
-    let niceName = 'OneDrive file';
-    try{ niceName = new URL(trimmed).pathname.split('/').pop() || niceName; }catch(e){}
-    await processWorkbookArrayBuffer(buf, niceName);
-  }catch(e){
-    console.error(e);
-    alert('Could not reach the server to load that link.');
-  }finally{
-    btn.textContent = originalText;
-    btn.disabled = false;
-  }
 }
 
 async function processWorkbookArrayBuffer(arrayBuffer, displayName){
@@ -774,6 +719,16 @@ function renderTable(){
           wrap.appendChild(valueEl);
           wrap.appendChild(plusBtn);
           wrap.appendChild(totalLabel);
+
+          let allBtn = null;
+          if (expected > 6){
+            allBtn = document.createElement('button');
+            allBtn.type = 'button';
+            allBtn.className = 'qty-btn qty-all-btn';
+            allBtn.textContent = 'All';
+            wrap.appendChild(allBtn);
+          }
+
           td.appendChild(wrap);
           if (done >= 1 && state && state.date){
             const dateEl = document.createElement('span');
@@ -790,6 +745,7 @@ function renderTable(){
             valueEl.classList.toggle('full', val >= expected);
             minusBtn.disabled = val <= 0;
             plusBtn.disabled = val >= expected;
+            if (allBtn) allBtn.disabled = val >= expected;
             const isComplete = val >= expected;
             tr.classList.toggle('done', isComplete);
             tr.setAttribute('data-complete', isComplete ? '1' : '0');
@@ -845,6 +801,7 @@ function renderTable(){
 
           minusBtn.addEventListener('click', () => bump(-1));
           plusBtn.addEventListener('click', () => bump(1));
+          if (allBtn) allBtn.addEventListener('click', () => bump(expected - currentVal));
 
           ref.control = wrap;
           ref.getQtyVal = () => currentVal;
