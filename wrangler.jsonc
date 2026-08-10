@@ -2,6 +2,9 @@
   "name": "checktourbo",
   "compatibility_date": "2026-07-15",
   "main": "src/index.js",
+  "vars": {
+    "REPORT_RECIPIENTS": "jarme@boconcept.com"
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
