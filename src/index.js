@@ -97,7 +97,8 @@ export class ChecklistState {
       return { ok: false, error: 'No REPORT_RECIPIENTS configured' };
     }
     if (!this.env.RESEND_API_KEY) {
-      return { ok: false, error: 'No RESEND_API_KEY configured' };
+      const visibleKeys = Object.keys(this.env || {}).join(', ') || '(none)';
+      return { ok: false, error: 'No RESEND_API_KEY configured. Bindings visible to this Durable Object: [' + visibleKeys + ']' };
     }
 
     const bytes = new TextEncoder().encode(csv);
