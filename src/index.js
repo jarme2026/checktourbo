@@ -221,20 +221,31 @@ export class ChecklistState {
       // 100% complete. Safe to call more than once: the Durable Object
       // only ever actually sends the email the first time per cycle,
       // even if two people's tabs both notice completion at once.
+      // With { force: true } (the admin's "send test report" button), it
+      // skips the completion/already-sent checks entirely — useful for
+      // testing the email pipeline without checking off a whole list.
       if (url.pathname === '/send-report' && request.method === 'POST') {
-        const alreadySent = await this.state.storage.get('reportSent');
-        if (alreadySent) {
-          return json({ ok: true, skipped: true, reason: 'already sent' });
+        let body = {};
+        try { body = await request.json(); } catch (err) {}
+
+        if (!body.force) {
+          const alreadySent = await this.state.storage.get('reportSent');
+          if (alreadySent) {
+            return json({ ok: true, skipped: true, reason: 'already sent' });
+          }
+          const complete = await this.isFullyComplete();
+          if (!complete) {
+            return json({ ok: true, skipped: true, reason: 'not complete' });
+          }
         }
-        const complete = await this.isFullyComplete();
-        if (!complete) {
-          return json({ ok: true, skipped: true, reason: 'not complete' });
-        }
+
         const result = await this.sendReportEmail();
         if (!result.ok) {
           return json({ ok: false, error: result.error }, 502);
         }
-        await this.state.storage.put('reportSent', true);
+        if (!body.force) {
+          await this.state.storage.put('reportSent', true);
+        }
         return json({ ok: true, sent: true });
       }
 
