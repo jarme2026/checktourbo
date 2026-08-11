@@ -258,6 +258,7 @@
           <select id="qtyColSelect"></select>
         </div>
         <button class="btn danger" id="resetBtn">Clear all progress</button>
+        <button class="btn" id="testReportBtn">Send test report now</button>
       </div>
 
       <div class="search-wrap">
@@ -630,14 +631,22 @@ function updateProgress(){
 async function maybeSendReport(){
   try{
     const res = await fetch('/api/send-report', { method: 'POST' });
-    if (!res.ok) return;
-    const data = await res.json();
+    let data = null;
+    try{ data = await res.json(); }catch(e){}
+    if (!res.ok){
+      console.error('Send report failed', data);
+      if (isAdmin) alert('Could not send the report email: ' + (data && data.error ? data.error : ('HTTP ' + res.status)));
+      return;
+    }
     if (data && data.sent){
       const banner = document.getElementById('allDoneBanner');
       banner.textContent = '✓ All items checked — a report was emailed.';
+    } else if (data && data.skipped && isAdmin){
+      console.log('Report not sent:', data.reason);
     }
   }catch(e){
     console.error('Failed to send report', e);
+    if (isAdmin) alert('Could not reach the server to send the report.');
   }
 }
 
@@ -996,6 +1005,33 @@ resetBtn.addEventListener('click', async () => {
     renderTable();
   }
 });
+
+const testReportBtn = document.getElementById('testReportBtn');
+if (testReportBtn){
+  testReportBtn.addEventListener('click', async () => {
+    testReportBtn.disabled = true;
+    testReportBtn.textContent = 'Sending…';
+    try{
+      const res = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true })
+      });
+      let data = null;
+      try{ data = await res.json(); }catch(e){}
+      if (res.ok && data && data.sent){
+        alert('Test email sent! Check the inbox (and spam folder) for jarme@boconcept.com.');
+      } else {
+        alert('Could not send: ' + (data && data.error ? data.error : ('HTTP ' + res.status)));
+      }
+    }catch(e){
+      alert('Could not reach the server.');
+    }finally{
+      testReportBtn.disabled = false;
+      testReportBtn.textContent = 'Send test report now';
+    }
+  });
+}
 
 async function init(){
   const state = await loadState();
