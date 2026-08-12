@@ -3,7 +3,7 @@
   "compatibility_date": "2026-07-15",
   "main": "src/index.js",
   "vars": {
-    "REPORT_RECIPIENTS": "jarme@boconcept.com,arva@boconcept.com"
+    "REPORT_RECIPIENTS": "jarme@boconcept.com"
   },
   "secrets_store_secrets": [
     {
