@@ -5,6 +5,13 @@
   "vars": {
     "REPORT_RECIPIENTS": "jarme@boconcept.com"
   },
+  "secrets_store_secrets": [
+    {
+      "binding": "RESEND_API_KEY",
+      "store_id": "07fda41a4c7444849daa3e4232849687",
+      "secret_name": "resend-api-key"
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
