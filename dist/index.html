@@ -295,7 +295,6 @@ let allTicks = {};
 let allNotes = {};
 let wasAllDone = false;
 let rowRefs = [];
-let pollTimer = null;
 let saveTimers = {};
 
 const fileInput = document.getElementById('fileInput');
@@ -557,11 +556,13 @@ async function saveNote(key, note){
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ key, note })
     });
-    if (!res.ok) return;
+    if (!res.ok) return null;
     const data = await res.json();
     if (data && data.notes) allNotes = data.notes;
+    return data;
   }catch(e){
     console.error('Failed to save note', e);
+    return null;
   }
 }
 
@@ -605,13 +606,26 @@ async function resetAllTicks(){
   }
 }
 
+function rowIsComplete(ri){
+  const row = rows[ri];
+  const expected = parseExpectedQty(row);
+  const state = allTicks[rowKeys[ri]];
+  const done = state ? (state.qty || 0) : 0;
+  const note = String(allNotes[rowKeys[ri]] || '').trim();
+  return done >= expected || note.length > 0;
+}
+
 function updateProgress(){
   let doneRows = 0;
   rows.forEach((row, ri) => {
-    const expected = parseExpectedQty(row);
-    const state = allTicks[rowKeys[ri]];
-    const done = state ? (state.qty || 0) : 0;
-    if (done >= expected) doneRows++;
+    const complete = rowIsComplete(ri);
+    if (complete) doneRows++;
+
+    const ref = rowRefs[ri];
+    if (ref && ref.tr){
+      ref.tr.classList.toggle('done', complete);
+      ref.tr.setAttribute('data-complete', complete ? '1' : '0');
+    }
   });
   progressLine.innerHTML = '<strong>' + doneRows + '</strong> of ' + rows.length + ' complete';
 
@@ -619,7 +633,7 @@ function updateProgress(){
   const isAllDone = rows.length > 0 && doneRows === rows.length;
   allDoneBanner.style.display = isAllDone ? 'block' : 'none';
   if (!isAllDone){
-    allDoneBanner.textContent = '✓ All items checked — this list is complete!';
+    allDoneBanner.textContent = '✓ All items resolved — this list is complete!';
   }
 
   if (isAllDone && !wasAllDone){
@@ -640,7 +654,7 @@ async function maybeSendReport(){
     }
     if (data && data.sent){
       const banner = document.getElementById('allDoneBanner');
-      banner.textContent = '✓ All items checked — a report was emailed.';
+      banner.textContent = '✓ All items resolved — a report was emailed.';
     } else if (data && data.skipped && isAdmin){
       console.log('Report not sent:', data.reason);
     }
@@ -669,7 +683,7 @@ function applySearchFilter(){
   });
   searchCount.textContent = term
     ? (matches + ' of ' + rows.length + ' rows match')
-    : 'Checked items are hidden — search to find and undo one.';
+    : 'Resolved items are hidden — search to find and edit one.';
 }
 
 searchInput.addEventListener('input', applySearchFilter);
@@ -702,11 +716,12 @@ function renderTable(){
     const expected = parseExpectedQty(row);
     const state = allTicks[rowKeys[ri]];
     const done = state ? (state.qty || 0) : 0;
-    const isComplete = done >= expected;
+    const existingNote = String(allNotes[rowKeys[ri]] || '');
+    const isComplete = done >= expected || existingNote.trim().length > 0;
     if (isComplete) tr.classList.add('done');
     if (expected > 1) tr.classList.add('qty-row');
     tr.setAttribute('data-complete', isComplete ? '1' : '0');
-    tr.setAttribute('data-search', row.map(c => String(c ?? '')).join(' ').toLowerCase());
+    tr.setAttribute('data-search', (row.map(c => String(c ?? '')).join(' ') + ' ' + existingNote).toLowerCase());
 
     const ref = { tr, expected, control: null, td: null };
 
@@ -751,10 +766,10 @@ function renderTable(){
               dateEl.textContent = dateStr;
               td.appendChild(dateEl);
             }
-            updateProgress();
-            applySearchFilter();
             const result = await saveTickSet(rowKeys[ri], allTicks[rowKeys[ri]]);
             if (result && result.ticks) applyRemoteState(result.ticks);
+            updateProgress();
+            applySearchFilter();
           });
           ref.control = input;
         } else {
@@ -810,7 +825,8 @@ function renderTable(){
             minusBtn.disabled = val <= 0;
             plusBtn.disabled = val >= expected;
             if (allBtn) allBtn.disabled = val >= expected;
-            const isComplete = val >= expected;
+            const note = String(allNotes[rowKeys[ri]] || '').trim();
+            const isComplete = val >= expected || note.length > 0;
             tr.classList.toggle('done', isComplete);
             tr.setAttribute('data-complete', isComplete ? '1' : '0');
             applySearchFilter();
@@ -859,7 +875,6 @@ function renderTable(){
             ref.lastEditAt = Date.now();
             applyQtyUI(currentVal);
             setDateLabel(allTicks[rowKeys[ri]].date);
-            updateProgress();
             flushDelta();
           };
 
@@ -880,8 +895,6 @@ function renderTable(){
     const notesTd = document.createElement('td');
     notesTd.className = 'notes-cell';
     notesTd.setAttribute('data-label', 'Notes');
-    const existingNote = allNotes[rowKeys[ri]] || '';
-
     if (isAdmin){
       const noteInput = document.createElement('input');
       noteInput.type = 'text';
@@ -892,8 +905,13 @@ function renderTable(){
       noteInput.addEventListener('input', () => {
         if (noteTimer) clearTimeout(noteTimer);
         noteTimer = setTimeout(async () => {
-          allNotes[rowKeys[ri]] = noteInput.value;
-          await saveNote(rowKeys[ri], noteInput.value);
+          const value = noteInput.value.trim();
+          allNotes[rowKeys[ri]] = value;
+          const result = await saveNote(rowKeys[ri], value);
+          if (!result) return;
+          tr.setAttribute('data-search', (row.map(c => String(c ?? '')).join(' ') + ' ' + value).toLowerCase());
+          updateProgress();
+          applySearchFilter();
         }, 500);
       });
       notesTd.appendChild(noteInput);
@@ -929,7 +947,7 @@ function applyRemoteState(newTicks){
     allTicks[key] = incoming;
     changed = true;
 
-    const isComplete = incoming.qty >= ref.expected;
+    const isComplete = rowIsComplete(ri);
     ref.tr.classList.toggle('done', isComplete);
     ref.tr.setAttribute('data-complete', isComplete ? '1' : '0');
 
@@ -955,22 +973,29 @@ function applyRemoteState(newTicks){
 }
 
 function applyRemoteNotes(newNotes){
+  let changed = false;
   rows.forEach((row, ri) => {
     const key = rowKeys[ri];
     const incoming = newNotes[key] || '';
     const current = allNotes[key] || '';
     if (incoming === current) return;
     const ref = rowRefs[ri];
-    if (!ref) { allNotes[key] = incoming; return; }
+    if (!ref) { allNotes[key] = incoming; changed = true; return; }
     if (ref.noteInput && document.activeElement === ref.noteInput) return; // don't clobber active typing
     allNotes[key] = incoming;
+    changed = true;
     if (ref.noteInput){
       ref.noteInput.value = incoming;
     } else if (ref.notesTd){
       ref.notesTd.textContent = incoming;
       ref.notesTd.classList.toggle('has-note', !!incoming);
     }
+    ref.tr.setAttribute('data-search', (row.map(c => String(c ?? '')).join(' ') + ' ' + incoming).toLowerCase());
   });
+  if (changed){
+    updateProgress();
+    applySearchFilter();
+  }
 }
 
 async function pollForUpdates(){
@@ -1052,6 +1077,11 @@ async function init(){
       qtyColIndex = state.qtyColIndex;
     }
     buildKeys();
+    let completeAtLoad = 0;
+    rows.forEach((row, ri) => {
+      if (rowIsComplete(ri)) completeAtLoad++;
+    });
+    wasAllDone = rows.length > 0 && completeAtLoad === rows.length;
     renderTable();
     startPolling();
   } else if (isAdmin){
