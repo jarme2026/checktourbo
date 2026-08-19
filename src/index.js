@@ -1,7 +1,13 @@
-const ALLOWED_CHECKERS = new Set(['Adrian', 'Leo', 'Liviu']);
-
 // ChecklistState: Durable Object responsible for the sheet, progress,
 // notes and report sending for this project.
+
+function normalizeCheckerName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 50);
+}
+
 export class ChecklistState {
   constructor(state, env) {
     this.state = state;
@@ -254,11 +260,11 @@ export class ChecklistState {
         try { body = await request.json(); } catch (err) {}
 
         const force = body.force === true;
-        const checkedBy = force ? '' : String(body.checkedBy || '').trim();
+        const checkedBy = force ? '' : normalizeCheckerName(body.checkedBy);
 
-        if (!force && !ALLOWED_CHECKERS.has(checkedBy)) {
+        if (!force && checkedBy.length < 2) {
           return json(
-            { ok: false, error: 'Please select who checked the list: Adrian, Leo or Liviu.' },
+            { ok: false, error: 'Please enter the name of the person who checked the list.' },
             400
           );
         }
