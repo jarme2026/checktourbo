@@ -642,25 +642,85 @@ function updateProgress(){
   wasAllDone = isAllDone;
 }
 
+function chooseChecker(){
+  return new Promise(resolve => {
+    const old = document.getElementById('checkerChoiceOverlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'checkerChoiceOverlay';
+    overlay.style.cssText =
+      'position:fixed;inset:0;z-index:99999;background:rgba(30,25,15,.62);' +
+      'display:flex;align-items:center;justify-content:center;padding:18px;';
+
+    overlay.innerHTML = `
+      <div style="width:min(100%,390px);background:#FFFEFA;color:#2E2A22;
+                  border:1px solid #8B8168;border-radius:12px;padding:22px;
+                  box-shadow:0 18px 50px rgba(0,0,0,.28);">
+        <h2 style="margin:0 0 8px;font-family:'Courier New',monospace;font-size:20px;">
+          WHO CHECKED THIS?
+        </h2>
+        <p style="margin:0 0 16px;color:#6B6353;font-size:14px;">
+          Select who completed this verification before sending the report.
+        </p>
+        <select id="checkerSelect"
+                style="width:100%;padding:12px;margin-bottom:14px;font-size:16px;
+                       border:1px solid #8B8168;border-radius:7px;background:#FFFEFA;">
+          <option value="">Select a name...</option>
+          <option value="Adrian">Adrian</option>
+          <option value="Leo">Leo</option>
+          <option value="Liviu">Liviu</option>
+        </select>
+        <button id="checkerSend"
+                style="width:100%;padding:12px;border:1px solid #2F6B4F;
+                       border-radius:7px;background:#2F6B4F;color:white;
+                       font-size:15px;font-weight:700;cursor:pointer;">
+          Send email
+        </button>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#checkerSend').addEventListener('click', () => {
+      const name = overlay.querySelector('#checkerSelect').value;
+      if (!name){
+        alert('Please select Adrian, Leo or Liviu.');
+        return;
+      }
+      overlay.remove();
+      resolve(name);
+    });
+  });
+}
+
 async function maybeSendReport(){
   try{
-    const res = await fetch('/api/send-report', { method: 'POST' });
+    const checkedBy = await chooseChecker();
+
+    const res = await fetch('/api/send-report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checkedBy })
+    });
+
     let data = null;
     try{ data = await res.json(); }catch(e){}
+
     if (!res.ok){
       console.error('Send report failed', data);
-      if (isAdmin) alert('Could not send the report email: ' + (data && data.error ? data.error : ('HTTP ' + res.status)));
+      alert('Could not send the report email: ' + (data && data.error ? data.error : ('HTTP ' + res.status)));
       return;
     }
+
     if (data && data.sent){
       const banner = document.getElementById('allDoneBanner');
-      banner.textContent = '✓ All items resolved — a report was emailed.';
+      banner.textContent = '✓ All items resolved — report emailed. Checked by: ' + checkedBy;
     } else if (data && data.skipped && isAdmin){
       console.log('Report not sent:', data.reason);
     }
   }catch(e){
     console.error('Failed to send report', e);
-    if (isAdmin) alert('Could not reach the server to send the report.');
+    alert('Could not reach the server to send the report.');
   }
 }
 
