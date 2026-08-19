@@ -26,6 +26,16 @@ export class ChecklistState {
     return (await this.state.storage.get('notes')) || {};
   }
 
+
+  async getAllCheckedBy() {
+    return (
+      await this.state.storage.get(
+        "checkedByRows"
+      )
+    ) || {};
+  }
+
+
   parseExpectedQty(row, qtyColIndex) {
     if (qtyColIndex == null || qtyColIndex < 0) return 1;
     const raw = row[qtyColIndex];
@@ -68,10 +78,15 @@ export class ChecklistState {
     return true;
   }
 
-  async buildCsv(checkedBy = '') {
+  async buildCsv() {
     const dataset = await this.getDataset();
     const ticks = await this.getAllTicks();
     const notes = await this.getAllNotes();
+
+    const checkedByRows =
+      await this.getAllCheckedBy();
+
+        const checkedByRows = await this.getAllCheckedBy();
     if (!dataset) return '';
 
     const escape = (val) => {
@@ -98,7 +113,7 @@ export class ChecklistState {
       else if (done > 0) status = `Partial (${done}/${expected})`;
       else status = 'Not done';
 
-      lines.push([...row, status, note, checkedBy].map(escape).join(','));
+      lines.push([...row, status, note, checkedByRows[key] || ''].map(escape).join(','));
     });
 
     return lines.join('\r\n');
@@ -122,7 +137,7 @@ export class ChecklistState {
   }
 
   async sendReportEmail(checkedBy = '') {
-    const csv = await this.buildCsv(checkedBy);
+    const csv = await this.buildCsv();
     const recipients = (this.env.REPORT_RECIPIENTS || '')
       .split(',')
       .map(s => s.trim())
@@ -205,6 +220,7 @@ export class ChecklistState {
           tickColIndex: body.tickColIndex,
           qtyColIndex: body.qtyColIndex
         });
+        await this.state.storage.put('checkedByRows', {});
         await this.state.storage.put('reportSent', false);
         return json({ ok: true });
       }
@@ -228,6 +244,14 @@ export class ChecklistState {
         const newDate = newQty > 0 ? new Date().toLocaleDateString('en-US') : '';
         ticks[body.key] = { qty: newQty, date: newDate };
         await this.state.storage.put('ticks', ticks);
+        const checkedByRows = await this.getAllCheckedBy();
+        const checkerName = normalizeCheckerName(body.checkedBy);
+        if (newQty >= expected && checkerName.length >= 2) {
+          checkedByRows[body.key] = checkerName;
+        } else if (newQty < expected) {
+          delete checkedByRows[body.key];
+        }
+        await this.state.storage.put('checkedByRows', checkedByRows);
 
         return json({ ok: true, qty: newQty, date: newDate, ticks });
       }
@@ -242,6 +266,31 @@ export class ChecklistState {
         else delete notes[body.key];
 
         await this.state.storage.put('notes', notes);
+        const checkedByRows = await this.getAllCheckedBy();
+        const checkerName = normalizeCheckerName(body.checkedBy);
+        if (cleanNote && checkerName.length >= 2) {
+          checkedByRows[body.key] = checkerName;
+        } else if (!cleanNote) {
+          const ticksNow = await this.getAllTicks();
+          const datasetNow = await this.getDataset();
+          let stillComplete = false;
+          if (datasetNow && Array.isArray(datasetNow.rows)) {
+            const seenNow = {};
+            for (const row of datasetNow.rows) {
+              const base = this.rowKey(row);
+              seenNow[base] = (seenNow[base] || 0) + 1;
+              const key = seenNow[base] > 1 ? base + 'd' + seenNow[base] : base;
+              if (key === body.key) {
+                const expectedNow = this.parseExpectedQty(row, datasetNow.qtyColIndex);
+                const doneNow = ticksNow[key] ? (ticksNow[key].qty || 0) : 0;
+                stillComplete = doneNow >= expectedNow;
+                break;
+              }
+            }
+          }
+          if (!stillComplete) delete checkedByRows[body.key];
+        }
+        await this.state.storage.put('checkedByRows', checkedByRows);
         return json({ ok: true, notes });
       }
 
@@ -249,6 +298,7 @@ export class ChecklistState {
       if (url.pathname === '/reset' && request.method === 'POST') {
         await this.state.storage.put('ticks', {});
         await this.state.storage.put('notes', {});
+        await this.state.storage.put('checkedByRows', {});
         await this.state.storage.put('reportSent', false);
         return json({ ok: true });
       }
