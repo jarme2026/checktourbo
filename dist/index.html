@@ -734,7 +734,7 @@ async function saveNote(key, note){
     const res = await fetch('/api/note', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ key, note })
+      body: JSON.stringify({ key, note, checkedBy: currentCheckerName() })
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -751,7 +751,7 @@ async function saveTickSet(key, value){
     const res = await fetch('/api/tick', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ key, mode: 'set', value: value.qty })
+      body: JSON.stringify({ key, mode: 'set', value: value.qty, checkedBy: currentCheckerName() })
     });
     if (!res.ok) return null;
     return await res.json(); // { ok, qty, date, ticks }
@@ -766,7 +766,7 @@ async function saveTickDelta(key, delta, expected){
     const res = await fetch('/api/tick', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ key, mode: 'delta', value: delta, expected })
+      body: JSON.stringify({ key, mode: 'delta', value: delta, expected, checkedBy: currentCheckerName() })
     });
     if (!res.ok) return null;
     return await res.json(); // { ok, qty, date, ticks } — the server's authoritative value
