@@ -217,6 +217,90 @@
     .qty-total{ font-size: 12px; }
     .progress-line{ font-size: 12px; margin-bottom: 12px; }
   }
+
+.checker-userbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin:0 0 16px;
+  padding:10px 12px;
+  border:1px solid var(--paper-line, #ddd2b8);
+  border-radius:8px;
+  background:var(--card, #fffefa);
+  color:var(--ink-soft, #6b6353);
+  font-size:13px;
+}
+.checker-userbar strong{color:var(--ink, #2e2a22);}
+.checker-userbar button{
+  border:1px solid var(--clip-dark, #8b8168);
+  border-radius:6px;
+  background:transparent;
+  color:inherit;
+  padding:7px 10px;
+  cursor:pointer;
+  font:inherit;
+}
+#checkerLoginOverlay{
+  position:fixed;
+  inset:0;
+  z-index:100000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(30,25,15,.66);
+  backdrop-filter:blur(3px);
+}
+#checkerLoginOverlay.open{display:flex;}
+.checker-login-card{
+  width:min(100%,400px);
+  background:#FFFEFA;
+  color:#2E2A22;
+  border:1px solid #8B8168;
+  border-radius:12px;
+  padding:22px;
+  box-shadow:0 18px 50px rgba(0,0,0,.28);
+}
+.checker-login-card h2{
+  margin:0 0 8px;
+  font:700 20px 'Courier New',monospace;
+}
+.checker-login-card p{
+  margin:0 0 16px;
+  color:#6B6353;
+  font-size:14px;
+  line-height:1.4;
+}
+.checker-login-card input{
+  width:100%;
+  padding:12px;
+  margin-bottom:12px;
+  border:1px solid #8B8168;
+  border-radius:7px;
+  background:#fff;
+  color:#2E2A22;
+  font:inherit;
+  font-size:16px;
+}
+.checker-login-card .checker-login-error{
+  min-height:18px;
+  margin:-4px 0 8px;
+  color:#A94438;
+  font-size:12px;
+}
+.checker-login-card button{
+  width:100%;
+  min-height:44px;
+  border:1px solid #2F6B4F;
+  border-radius:7px;
+  background:#2F6B4F;
+  color:#fff;
+  font:inherit;
+  font-weight:700;
+  cursor:pointer;
+}
+
 </style>
 </head>
 <body>
@@ -228,6 +312,12 @@
   <div class="board">
     <h1>Check List Tour — Board</h1>
     <p class="subtitle" id="subtitle">Import the sheet, pick the column to check off, and search anything inside it.</p>
+
+<div class="checker-userbar" id="checkerUserBar" style="display:none;">
+  <div>Checking by: <strong id="checkerUserName"></strong></div>
+  <button type="button" id="changeCheckerBtn">Change name</button>
+</div>
+
 
     <div id="uploadArea" style="display:none;">
       <div class="drop" id="dropZone">
@@ -286,6 +376,96 @@
 </div>
 
 <script>
+
+const CHECKER_SESSION_KEY = 'checker_name_session';
+
+function cleanCheckerName(value){
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 50);
+}
+
+function currentCheckerName(){
+  return cleanCheckerName(sessionStorage.getItem(CHECKER_SESSION_KEY) || '');
+}
+
+function updateCheckerUserBar(){
+  const name = currentCheckerName();
+  const bar = document.getElementById('checkerUserBar');
+  const label = document.getElementById('checkerUserName');
+  if (!bar || !label) return;
+  label.textContent = name;
+  bar.style.display = name ? 'flex' : 'none';
+}
+
+function requestCheckerName(forceChange = false){
+  return new Promise(resolve => {
+    const existing = currentCheckerName();
+    if (existing && !forceChange){
+      updateCheckerUserBar();
+      resolve(existing);
+      return;
+    }
+
+    const overlay = document.getElementById('checkerLoginOverlay');
+    const input = document.getElementById('checkerLoginInput');
+    const error = document.getElementById('checkerLoginError');
+    const save = document.getElementById('checkerLoginSave');
+
+    if (!overlay || !input || !save){
+      resolve(existing);
+      return;
+    }
+
+    input.value = forceChange ? existing : '';
+    error.textContent = '';
+    overlay.classList.add('open');
+    setTimeout(() => input.focus(), 50);
+
+    const submit = () => {
+      const name = cleanCheckerName(input.value);
+      if (name.length < 2){
+        error.textContent = 'Please enter your name.';
+        input.focus();
+        return;
+      }
+
+      sessionStorage.setItem(CHECKER_SESSION_KEY, name);
+      overlay.classList.remove('open');
+      updateCheckerUserBar();
+      cleanup();
+      resolve(name);
+    };
+
+    const keyHandler = event => {
+      if (event.key === 'Enter'){
+        event.preventDefault();
+        submit();
+      }
+    };
+
+    const cleanup = () => {
+      save.removeEventListener('click', submit);
+      input.removeEventListener('keydown', keyHandler);
+    };
+
+    save.addEventListener('click', submit);
+    input.addEventListener('keydown', keyHandler);
+  });
+}
+
+function bindCheckerChangeButton(){
+  const btn = document.getElementById('changeCheckerBtn');
+  if (btn){
+    btn.addEventListener('click', () => {
+      requestCheckerName(true);
+    });
+  }
+  updateCheckerUserBar();
+}
+
+
 let headers = [];
 let rows = [];
 let tickColIndex = -1;
@@ -642,60 +822,14 @@ function updateProgress(){
   wasAllDone = isAllDone;
 }
 
-function chooseChecker(){
-  return new Promise(resolve => {
-    const old = document.getElementById('checkerChoiceOverlay');
-    if (old) old.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'checkerChoiceOverlay';
-    overlay.style.cssText =
-      'position:fixed;inset:0;z-index:99999;background:rgba(30,25,15,.62);' +
-      'display:flex;align-items:center;justify-content:center;padding:18px;';
-
-    overlay.innerHTML = `
-      <div style="width:min(100%,390px);background:#FFFEFA;color:#2E2A22;
-                  border:1px solid #8B8168;border-radius:12px;padding:22px;
-                  box-shadow:0 18px 50px rgba(0,0,0,.28);">
-        <h2 style="margin:0 0 8px;font-family:'Courier New',monospace;font-size:20px;">
-          WHO CHECKED THIS?
-        </h2>
-        <p style="margin:0 0 16px;color:#6B6353;font-size:14px;">
-          Select who completed this verification before sending the report.
-        </p>
-        <select id="checkerSelect"
-                style="width:100%;padding:12px;margin-bottom:14px;font-size:16px;
-                       border:1px solid #8B8168;border-radius:7px;background:#FFFEFA;">
-          <option value="">Select a name...</option>
-          <option value="Adrian">Adrian</option>
-          <option value="Leo">Leo</option>
-          <option value="Liviu">Liviu</option>
-        </select>
-        <button id="checkerSend"
-                style="width:100%;padding:12px;border:1px solid #2F6B4F;
-                       border-radius:7px;background:#2F6B4F;color:white;
-                       font-size:15px;font-weight:700;cursor:pointer;">
-          Send email
-        </button>
-      </div>`;
-
-    document.body.appendChild(overlay);
-
-    overlay.querySelector('#checkerSend').addEventListener('click', () => {
-      const name = overlay.querySelector('#checkerSelect').value;
-      if (!name){
-        alert('Please select Adrian, Leo or Liviu.');
-        return;
-      }
-      overlay.remove();
-      resolve(name);
-    });
-  });
-}
-
 async function maybeSendReport(){
   try{
-    const checkedBy = await chooseChecker();
+    const checkedBy = currentCheckerName() || await requestCheckerName();
+
+    if (!checkedBy){
+      alert('Please enter the checker name before sending the report.');
+      return;
+    }
 
     const res = await fetch('/api/send-report', {
       method: 'POST',
@@ -714,8 +848,10 @@ async function maybeSendReport(){
 
     if (data && data.sent){
       const banner = document.getElementById('allDoneBanner');
-      banner.textContent = '✓ All items resolved — report emailed. Checked by: ' + checkedBy;
-    } else if (data && data.skipped && isAdmin){
+      if (banner){
+        banner.textContent = '✓ All items completed — report emailed. Checked by: ' + checkedBy;
+      }
+    } else if (data && data.skipped && typeof isAdmin !== 'undefined' && isAdmin){
       console.log('Report not sent:', data.reason);
     }
   }catch(e){
@@ -1150,7 +1286,19 @@ async function init(){
     emptyState.style.display = 'block';
   }
 }
-init();
+bindCheckerChangeButton();
+requestCheckerName().then(() => init());
 </script>
+
+<div id="checkerLoginOverlay">
+  <div class="checker-login-card" role="dialog" aria-modal="true" aria-labelledby="checkerLoginTitle">
+    <h2 id="checkerLoginTitle">YOUR NAME</h2>
+    <p>Enter the name of the person checking the items. This name will be added to the final report.</p>
+    <input id="checkerLoginInput" type="text" inputmode="text" autocomplete="name" maxlength="50" placeholder="Type your name">
+    <div class="checker-login-error" id="checkerLoginError"></div>
+    <button type="button" id="checkerLoginSave">Continue</button>
+  </div>
+</div>
+
 </body>
 </html>
