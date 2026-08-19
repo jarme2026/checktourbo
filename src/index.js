@@ -85,8 +85,6 @@ export class ChecklistState {
 
     const checkedByRows =
       await this.getAllCheckedBy();
-
-        const checkedByRows = await this.getAllCheckedBy();
     if (!dataset) return '';
 
     const escape = (val) => {
@@ -199,7 +197,8 @@ export class ChecklistState {
           tickColIndex: dataset ? dataset.tickColIndex : -1,
           qtyColIndex: dataset ? dataset.qtyColIndex : -1,
           ticks,
-          notes
+          notes,
+          checkedByRows: await this.getAllCheckedBy()
         });
       }
 
@@ -207,7 +206,8 @@ export class ChecklistState {
       if (url.pathname === '/ticks' && request.method === 'GET') {
         const ticks = await this.getAllTicks();
         const notes = await this.getAllNotes();
-        return json({ ticks, notes });
+        const checkedByRows = await this.getAllCheckedBy();
+        return json({ ticks, notes, checkedByRows });
       }
 
       // Save/replace the spreadsheet. Dataset remains in Durable Object storage
