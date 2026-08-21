@@ -246,11 +246,16 @@ export class ChecklistState {
         await this.state.storage.put('ticks', ticks);
         const checkedByRows = await this.getAllCheckedBy();
         const checkerName = normalizeCheckerName(body.checkedBy);
-        if (newQty >= expected && checkerName.length >= 2) {
+        const wasComplete = Number(current.qty || 0) >= expected;
+        const isComplete = newQty >= expected;
+
+        // Only the request that completes the row owns the attribution.
+        if (!wasComplete && isComplete && checkerName.length >= 2) {
           checkedByRows[body.key] = checkerName;
-        } else if (newQty < expected) {
+        } else if (!isComplete) {
           delete checkedByRows[body.key];
         }
+
         await this.state.storage.put('checkedByRows', checkedByRows);
 
         return json({ ok: true, qty: newQty, date: newDate, ticks });
@@ -260,6 +265,7 @@ export class ChecklistState {
       if (url.pathname === '/note' && request.method === 'POST') {
         const body = await request.json();
         const notes = await this.getAllNotes();
+        const previousNote = String(notes[body.key] || '');
         const cleanNote = String(body.note || '').trim();
 
         if (cleanNote) notes[body.key] = cleanNote;
@@ -268,28 +274,39 @@ export class ChecklistState {
         await this.state.storage.put('notes', notes);
         const checkedByRows = await this.getAllCheckedBy();
         const checkerName = normalizeCheckerName(body.checkedBy);
-        if (cleanNote && checkerName.length >= 2) {
-          checkedByRows[body.key] = checkerName;
-        } else if (!cleanNote) {
-          const ticksNow = await this.getAllTicks();
-          const datasetNow = await this.getDataset();
-          let stillComplete = false;
-          if (datasetNow && Array.isArray(datasetNow.rows)) {
-            const seenNow = {};
-            for (const row of datasetNow.rows) {
-              const base = this.rowKey(row);
-              seenNow[base] = (seenNow[base] || 0) + 1;
-              const key = seenNow[base] > 1 ? base + 'd' + seenNow[base] : base;
-              if (key === body.key) {
-                const expectedNow = this.parseExpectedQty(row, datasetNow.qtyColIndex);
-                const doneNow = ticksNow[key] ? (ticksNow[key].qty || 0) : 0;
-                stillComplete = doneNow >= expectedNow;
-                break;
-              }
+        const ticksNow = await this.getAllTicks();
+        const datasetNow = await this.getDataset();
+
+        let quantityComplete = false;
+
+        if (datasetNow && Array.isArray(datasetNow.rows)) {
+          const seenNow = {};
+
+          for (const row of datasetNow.rows) {
+            const base = this.rowKey(row);
+            seenNow[base] = (seenNow[base] || 0) + 1;
+            const key = seenNow[base] > 1 ? base + 'd' + seenNow[base] : base;
+
+            if (key === body.key) {
+              const expectedNow = this.parseExpectedQty(row, datasetNow.qtyColIndex);
+              const doneNow = ticksNow[key] ? (ticksNow[key].qty || 0) : 0;
+              quantityComplete = doneNow >= expectedNow;
+              break;
             }
           }
-          if (!stillComplete) delete checkedByRows[body.key];
         }
+
+        const hadNote = String(previousNote || '').trim().length > 0;
+        const hasNote = cleanNote.length > 0;
+        const wasComplete = quantityComplete || hadNote;
+        const isComplete = quantityComplete || hasNote;
+
+        if (!wasComplete && isComplete && checkerName.length >= 2) {
+          checkedByRows[body.key] = checkerName;
+        } else if (!isComplete) {
+          delete checkedByRows[body.key];
+        }
+
         await this.state.storage.put('checkedByRows', checkedByRows);
         return json({ ok: true, notes });
       }
