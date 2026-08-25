@@ -246,19 +246,36 @@ export class ChecklistState {
         await this.state.storage.put('ticks', ticks);
         const checkedByRows = await this.getAllCheckedBy();
         const checkerName = normalizeCheckerName(body.checkedBy);
-        const wasComplete = Number(current.qty || 0) >= expected;
+        const previousQty = Number(current.qty || 0);
         const isComplete = newQty >= expected;
+        const madePositiveProgress = newQty > previousQty;
 
-        // Only the request that completes the row owns the attribution.
-        if (!wasComplete && isComplete && checkerName.length >= 2) {
-          checkedByRows[body.key] = checkerName;
-        } else if (!isComplete) {
-          delete checkedByRows[body.key];
+        if (madePositiveProgress && checkerName.length >= 2) {
+          const existingNames = String(checkedByRows[body.key] || "")
+            .split(",")
+            .map(name => name.trim())
+            .filter(Boolean);
+
+          if (!existingNames.includes(checkerName)) {
+            existingNames.push(checkerName);
+          }
+
+          checkedByRows[body.key] = existingNames.join(", ");
+        }
+
+        if (newQty === 0) {
+          const notesNow = await this.getAllNotes();
+          const noteNow = String(notesNow[body.key] || "").trim();
+          if (!noteNow) {
+            delete checkedByRows[body.key];
+          }
         }
 
         await this.state.storage.put('checkedByRows', checkedByRows);
 
-        return json({ ok: true, qty: newQty, date: newDate, ticks });
+        const allComplete = isComplete ? await this.isFullyComplete() : false;
+
+        return json({ ok: true, qty: newQty, date: newDate, ticks, allComplete });
       }
 
       // Save or clear one note.
@@ -272,43 +289,72 @@ export class ChecklistState {
         else delete notes[body.key];
 
         await this.state.storage.put('notes', notes);
-        const checkedByRows = await this.getAllCheckedBy();
-        const checkerName = normalizeCheckerName(body.checkedBy);
-        const ticksNow = await this.getAllTicks();
-        const datasetNow = await this.getDataset();
+        const checkedByRows =
+          await this.getAllCheckedBy();
 
-        let quantityComplete = false;
+        const checkerName =
+          normalizeCheckerName(
+            body.checkedBy
+          );
 
-        if (datasetNow && Array.isArray(datasetNow.rows)) {
-          const seenNow = {};
+        if (
+          cleanNote
+          &&
+          checkerName.length >= 2
+        ) {
+          const existingNames =
+            String(
+              checkedByRows[body.key] || ""
+            )
+              .split(",")
+              .map(
+                name => name.trim()
+              )
+              .filter(Boolean);
 
-          for (const row of datasetNow.rows) {
-            const base = this.rowKey(row);
-            seenNow[base] = (seenNow[base] || 0) + 1;
-            const key = seenNow[base] > 1 ? base + 'd' + seenNow[base] : base;
+          if (
+            !existingNames.includes(
+              checkerName
+            )
+          ) {
+            existingNames.push(
+              checkerName
+            );
+          }
 
-            if (key === body.key) {
-              const expectedNow = this.parseExpectedQty(row, datasetNow.qtyColIndex);
-              const doneNow = ticksNow[key] ? (ticksNow[key].qty || 0) : 0;
-              quantityComplete = doneNow >= expectedNow;
-              break;
-            }
+          checkedByRows[body.key] =
+            existingNames.join(", ");
+        }
+
+        if (
+          !cleanNote
+        ) {
+          const ticksNow =
+            await this.getAllTicks();
+
+          const qtyNow =
+            ticksNow[body.key]
+              ? Number(
+                  ticksNow[body.key].qty || 0
+                )
+              : 0;
+
+          if (
+            qtyNow === 0
+          ) {
+            delete checkedByRows[
+              body.key
+            ];
           }
         }
 
-        const hadNote = String(previousNote || '').trim().length > 0;
-        const hasNote = cleanNote.length > 0;
-        const wasComplete = quantityComplete || hadNote;
-        const isComplete = quantityComplete || hasNote;
+        await this.state.storage.put(
+          "checkedByRows",
+          checkedByRows
+        );
+        const allComplete = isComplete ? await this.isFullyComplete() : false;
 
-        if (!wasComplete && isComplete && checkerName.length >= 2) {
-          checkedByRows[body.key] = checkerName;
-        } else if (!isComplete) {
-          delete checkedByRows[body.key];
-        }
-
-        await this.state.storage.put('checkedByRows', checkedByRows);
-        return json({ ok: true, notes });
+        return json({ ok: true, notes, allComplete });
       }
 
       // Clear progress and notes, preserving the uploaded spreadsheet.
