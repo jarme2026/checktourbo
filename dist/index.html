@@ -375,6 +375,16 @@
   </div>
 </div>
 
+<div id="checkerLoginOverlay">
+  <div class="checker-login-card" role="dialog" aria-modal="true" aria-labelledby="checkerLoginTitle">
+    <h2 id="checkerLoginTitle">YOUR NAME</h2>
+    <p>Enter the name of the person checking the items. This name will be added to the final report.</p>
+    <input id="checkerLoginInput" type="text" inputmode="text" autocomplete="name" maxlength="50" placeholder="Type your name">
+    <div class="checker-login-error" id="checkerLoginError"></div>
+    <button type="button" id="checkerLoginSave">Continue</button>
+  </div>
+</div>
+
 <script>
 
 const CHECKER_SESSION_KEY = 'checker_name_session';
@@ -1297,19 +1307,13 @@ async function init(){
     emptyState.style.display = 'block';
   }
 }
+// =====================================================
+// APP START
+// Always identify the checker before loading shared data.
+// =====================================================
 bindCheckerChangeButton();
-requestCheckerName().then(() => init());
+requestCheckerName(true).then(() => init());
 </script>
-
-<div id="checkerLoginOverlay">
-  <div class="checker-login-card" role="dialog" aria-modal="true" aria-labelledby="checkerLoginTitle">
-    <h2 id="checkerLoginTitle">YOUR NAME</h2>
-    <p>Enter the name of the person checking the items. This name will be added to the final report.</p>
-    <input id="checkerLoginInput" type="text" inputmode="text" autocomplete="name" maxlength="50" placeholder="Type your name">
-    <div class="checker-login-error" id="checkerLoginError"></div>
-    <button type="button" id="checkerLoginSave">Continue</button>
-  </div>
-</div>
 
 </body>
 </html>
