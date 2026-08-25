@@ -816,13 +816,16 @@ function updateProgress(){
     allDoneBanner.textContent = '✓ All items resolved — this list is complete!';
   }
 
-  if (isAllDone && !wasAllDone){
-    maybeSendReport();
-  }
+  // Send only after the server confirms shared completion.
   wasAllDone = isAllDone;
 }
 
+let reportSendInFlight = false;
+
 async function maybeSendReport(){
+  if (reportSendInFlight) return;
+  reportSendInFlight = true;
+
   try{
     const checkedBy = currentCheckerName() || await requestCheckerName();
 
@@ -857,6 +860,8 @@ async function maybeSendReport(){
   }catch(e){
     console.error('Failed to send report', e);
     alert('Could not reach the server to send the report.');
+  }finally{
+    reportSendInFlight = false;
   }
 }
 
@@ -964,6 +969,9 @@ function renderTable(){
             }
             const result = await saveTickSet(rowKeys[ri], allTicks[rowKeys[ri]], expected);
             if (result && result.ticks) applyRemoteState(result.ticks);
+            if (result && result.allComplete){
+              await maybeSendReport();
+            }
             updateProgress();
             applySearchFilter();
           });
@@ -1059,6 +1067,9 @@ function renderTable(){
                 updateProgress();
               }
               if (result && result.ticks) applyRemoteState(result.ticks);
+              if (result && result.allComplete){
+                await maybeSendReport();
+              }
             }, 450);
           };
 
