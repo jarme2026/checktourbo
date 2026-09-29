@@ -711,16 +711,21 @@ function parseExpectedQty(row){
 
 // "Total sofas": sum of the Quantity column for every row whose
 // description (any column, matched the same way the search bar already
-// does) is one of the SOFA_KEYWORDS phrases or a 1/1.5/2/2.5/3-seater/
-// seating — the hyphen in "2-Seater" style descriptions is optional so
-// both "2 Seater" and "2-Seater" match.
-const SOFA_KEYWORDS = ['chaise longue', 'corner module', 'resting unit', 'basic unit', 'armchair', 'open end left', 'open end right'];
+// does) is one of the SOFA_KEYWORDS phrases, a chaise longue (the sheet
+// spells it several ways — "chaise longue", "chaiselong", "chaise-long",
+// no trailing "ue" — so CHAISE_LONGUE_PATTERN treats the space/hyphen and
+// the "ue" ending as optional), or a 1/1.5/2/2.5/3-seater/seating — the
+// hyphen in "2-Seater" style descriptions is optional so both "2 Seater"
+// and "2-Seater" match.
+const SOFA_KEYWORDS = ['corner module', 'resting unit', 'basic unit', 'armchair', 'open end left', 'open end right'];
 const SOFA_SEATER_PATTERN = /\b(1\.5|2\.5|1|2|3)[\s-]*seat(er|ing)\b/i;
+const CHAISE_LONGUE_PATTERN = /chaise[\s-]?long/i;
 
 function rowIsSofaCategory(row){
   const text = row.map(c => String(c ?? '')).join(' ').toLowerCase();
   return SOFA_KEYWORDS.some(kw => text.includes(kw))
-    || SOFA_SEATER_PATTERN.test(text);
+    || SOFA_SEATER_PATTERN.test(text)
+    || CHAISE_LONGUE_PATTERN.test(text);
 }
 
 function updateTotalSofas(){
