@@ -392,6 +392,39 @@ export class ChecklistState {
     return null;
   }
 
+  async hasShowroomOrOwnStock() {
+    const dataset =
+      await this.getDataset();
+
+    if (
+      !dataset ||
+      !dataset.headers ||
+      !dataset.rows
+    ) {
+      return false;
+    }
+
+    const warehouseColIndex =
+      dataset.headers.findIndex(
+        h => /warehouse/i.test(String(h ?? ""))
+      );
+
+    if (warehouseColIndex < 0) {
+      return false;
+    }
+
+    return dataset.rows.some(row => {
+      const value =
+        String(row[warehouseColIndex] ?? "")
+          .toLowerCase();
+
+      return (
+        value.includes("show") ||
+        value.includes("own")
+      );
+    });
+  }
+
   async sendReportEmail(
     checkedBy
   ) {
@@ -474,6 +507,11 @@ export class ChecklistState {
         ? " — checked by " + safeChecker
         : "";
 
+    const subjectWarehouseTag =
+      (await this.hasShowroomOrOwnStock())
+        ? " — Showroom/Own stock items"
+        : "";
+
     const textCheckerLine =
       safeChecker
         ? "\n\nChecked by: " + safeChecker
@@ -506,6 +544,8 @@ export class ChecklistState {
 
               subject:
                 "Checklist complete"
+                +
+                subjectWarehouseTag
                 +
                 subjectSuffix,
 
