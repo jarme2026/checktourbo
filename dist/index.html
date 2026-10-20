@@ -718,11 +718,19 @@ function parseExpectedQty(row){
 // hyphen in "2-Seater" style descriptions is optional so both "2 Seater"
 // and "2-Seater" match.
 const SOFA_KEYWORDS = ['corner module', 'resting unit', 'basic unit', 'armchair', 'open end left', 'open end right', 'sofa sleeper'];
-const SOFA_SEATER_PATTERN = /\b(1\.5|2\.5|1|2|3)[\s-]*seat(er|ing)\b/i;
+const SOFA_SEATER_PATTERN = /\b(1[.,]5|2[.,]5|1|2|3)[\s-]*seat(er|ing)\b/i;
 const CHAISE_LONGUE_PATTERN = /chaise[\s-]?long/i;
+// "Chair" on its own (dining chair, seat for chair/barstool/bench) is
+// never a sofa, but "armchair" is a real sofa module (SOFA_KEYWORDS) — the
+// negative lookbehind only excludes a bare "chair", never the one inside
+// "armchair", so armchair rows still fall through to the checks below.
+const CHAIR_EXCLUDE_PATTERN = /(?<!arm)chair/i;
 
 function rowIsSofaCategory(row){
   const text = row.map(c => String(c ?? '')).join(' ').toLowerCase();
+
+  if (CHAIR_EXCLUDE_PATTERN.test(text)) return false;
+
   return SOFA_KEYWORDS.some(kw => text.includes(kw))
     || SOFA_SEATER_PATTERN.test(text)
     || CHAISE_LONGUE_PATTERN.test(text);
