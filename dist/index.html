@@ -88,10 +88,24 @@
     gap: 12px; margin: -8px 0 16px 2px; flex-wrap: wrap;
   }
   .search-count{ font-size: 15px; color: var(--ink-soft); margin: 0; font-family: 'Courier New', monospace; }
+  .total-sofas-wrap{ position: relative; }
   .total-sofas{
     font-size: 15px; color: var(--ink); font-family: 'Courier New', monospace;
-    font-weight: bold; white-space: nowrap;
+    font-weight: bold; white-space: nowrap; background: none; border: none;
+    padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
   }
+  .total-sofas:hover{ color: var(--stamp-green); }
+  .total-sofas-breakdown{
+    display: none; position: absolute; right: 0; top: 100%; margin-top: 6px; z-index: 50;
+    background: var(--card); border: 1px solid var(--board-dark); border-radius: 6px;
+    padding: 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,0.16);
+    font-size: 13px; font-family: 'Courier New', monospace;
+  }
+  .total-sofas-breakdown.open{ display: block; }
+  .total-sofas-breakdown .breakdown-row{
+    display: flex; justify-content: space-between; gap: 18px; padding: 2px 0; white-space: nowrap;
+  }
+  .total-sofas-breakdown .breakdown-row strong{ color: var(--ink); }
   .table-scroll{ overflow-x: auto; border: 1px solid var(--paper-line); border-radius: 6px; }
   table{ border-collapse: collapse; width: 100%; font-size: 14px; }
   thead th{
@@ -368,7 +382,13 @@
       </div>
       <div class="search-count-row">
         <div class="search-count" id="searchCount"></div>
-        <div class="total-sofas" id="totalSofas"></div>
+        <div class="total-sofas-wrap">
+          <button type="button" class="total-sofas" id="totalSofasBtn"></button>
+          <div class="total-sofas-breakdown" id="totalSofasBreakdown">
+            <div class="breakdown-row"><span>Sofas</span><strong id="sofaBreakdownSofas">0</strong></div>
+            <div class="breakdown-row"><span>Armchairs</span><strong id="sofaBreakdownArmchairs">0</strong></div>
+          </div>
+        </div>
       </div>
 
       <div class="progress-line" id="progressLine"></div>
@@ -726,21 +746,64 @@ const CHAISE_LONGUE_PATTERN = /chaise[\s-]?long/i;
 // "armchair", so armchair rows still fall through to the checks below.
 const CHAIR_EXCLUDE_PATTERN = /(?<!arm)chair/i;
 
-function rowIsSofaCategory(row){
+// Splits a row into 'sofa' (any SOFA_KEYWORDS term other than armchair, a
+// seater/seating, or a chaise longue), 'armchair', or null (not counted at
+// all — a real chair/barstool/bench, or nothing sofa-related). A row never
+// counts as both; armchair only wins when nothing else on the row matched.
+function classifySofaRow(row){
   const text = row.map(c => String(c ?? '')).join(' ').toLowerCase();
 
-  if (CHAIR_EXCLUDE_PATTERN.test(text)) return false;
+  if (CHAIR_EXCLUDE_PATTERN.test(text)) return null;
 
-  return SOFA_KEYWORDS.some(kw => text.includes(kw))
+  const matchesOtherSofaTerm =
+    SOFA_KEYWORDS.some(kw => kw !== 'armchair' && text.includes(kw))
     || SOFA_SEATER_PATTERN.test(text)
     || CHAISE_LONGUE_PATTERN.test(text);
+
+  if (matchesOtherSofaTerm) return 'sofa';
+  if (text.includes('armchair')) return 'armchair';
+  return null;
+}
+
+function rowIsSofaCategory(row){
+  return classifySofaRow(row) !== null;
 }
 
 function updateTotalSofas(){
-  const el = document.getElementById('totalSofas');
-  if (!el) return;
-  const total = rows.reduce((sum, row) => sum + (rowIsSofaCategory(row) ? parseExpectedQty(row) : 0), 0);
-  el.textContent = 'total sofas ' + total;
+  const btn = document.getElementById('totalSofasBtn');
+  if (!btn) return;
+
+  let sofaTotal = 0;
+  let armchairTotal = 0;
+
+  rows.forEach(row => {
+    const kind = classifySofaRow(row);
+    if (kind === 'sofa') sofaTotal += parseExpectedQty(row);
+    else if (kind === 'armchair') armchairTotal += parseExpectedQty(row);
+  });
+
+  btn.textContent = 'total sofas ' + (sofaTotal + armchairTotal);
+
+  const sofasEl = document.getElementById('sofaBreakdownSofas');
+  const armchairsEl = document.getElementById('sofaBreakdownArmchairs');
+  if (sofasEl) sofasEl.textContent = sofaTotal;
+  if (armchairsEl) armchairsEl.textContent = armchairTotal;
+}
+
+const totalSofasBtn = document.getElementById('totalSofasBtn');
+const totalSofasBreakdown = document.getElementById('totalSofasBreakdown');
+
+if (totalSofasBtn && totalSofasBreakdown){
+  totalSofasBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    totalSofasBreakdown.classList.toggle('open');
+  });
+
+  document.addEventListener('click', e => {
+    if (!totalSofasBreakdown.contains(e.target) && e.target !== totalSofasBtn){
+      totalSofasBreakdown.classList.remove('open');
+    }
+  });
 }
 
 async function loadState(){
